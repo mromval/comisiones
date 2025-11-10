@@ -50,29 +50,26 @@ class AdminTeam {
   }
 }
 
-// --- ¡INICIO DE LA MODIFICACIÓN! ---
 // Representa a un perfil de comisión de la lista GET /api/perfiles
 class AdminProfile {
   final int id;
   final String nombrePerfil;
-  final int ordenSorteo; // <-- ¡AÑADIDO!
+  final int ordenSorteo; 
 
   AdminProfile({
     required this.id,
     required this.nombrePerfil,
-    required this.ordenSorteo, // <-- ¡AÑADIDO!
+    required this.ordenSorteo, 
   });
 
   factory AdminProfile.fromJson(Map<String, dynamic> json) {
     return AdminProfile(
       id: int.parse(json['id'].toString()),
       nombrePerfil: json['nombre_perfil'] as String,
-      // Leemos el orden (viene como String desde la BD)
-      ordenSorteo: int.parse(json['orden_sorteo'].toString()), // <-- ¡AÑADIDO!
+      ordenSorteo: int.parse(json['orden_sorteo'].toString()), 
     );
   }
 }
-// --- FIN DE LA MODIFICACIÓN ---
 
 // (AdminConcurso, AdminTramo, AdminComponent... sin cambios)
 class AdminConcurso {
@@ -125,6 +122,23 @@ class AdminConcurso {
       topeMonto: safeDoubleParse(json['tope_monto']),
     );
   }
+
+  // --- ¡MÉTODO AÑADIDO QUE ARREGLA EL ERROR! ---
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'periodo_inicio': periodoInicio,
+      'periodo_fin': periodoFin,
+      'esta_activa': estaActiva ? 1 : 0,
+      'nombre_perfil': nombrePerfil,
+      'nombre_componente': nombreComponente,
+      'clave_logica': claveLogica,
+      'requisito_min_uf_total': requisitoMinUfTotal,
+      'requisito_tasa_recaudacion': requisitoTasaRecaudacion,
+      'requisito_min_contratos': requisitoMinContratos,
+      'tope_monto': topeMonto,
+    };
+  }
 }
 
 class AdminTramo {
@@ -169,6 +183,28 @@ class AdminComponent {
       id: int.parse(json['id'].toString()),
       nombreComponente: json['nombre_componente'] as String,
       claveLogica: json['clave_logica'] as String,
+    );
+  }
+}
+
+// --- ¡NUEVA CLASE AÑADIDA EN EL PASO ANTERIOR! ---
+// Representa un ítem de la tabla de Configuracion
+class AdminConfig {
+  final String llave;
+  final String valor;
+  final String? descripcion;
+
+  AdminConfig({
+    required this.llave,
+    required this.valor,
+    this.descripcion,
+  });
+
+  factory AdminConfig.fromJson(Map<String, dynamic> json) {
+    return AdminConfig(
+      llave: json['llave'] as String,
+      valor: json['valor'] as String,
+      descripcion: json['descripcion'] as String?,
     );
   }
 }

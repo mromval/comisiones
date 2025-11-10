@@ -5,8 +5,10 @@ import 'package:frontend_comisiones_v2/providers/auth_provider.dart';
 import 'package:frontend_comisiones_v2/screens/admin/input_metrics_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/manage_concursos_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/manage_equipos_screen.dart';
-import 'package:frontend_comisiones_v2/screens/admin/manage_perfiles_screen.dart'; // <-- 1. NUEVO IMPORT
+import 'package:frontend_comisiones_v2/screens/admin/manage_perfiles_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/manage_users_screen.dart';
+// --- ¡NUEVO IMPORT! ---
+import 'package:frontend_comisiones_v2/screens/admin/manage_configuracion_screen.dart';
 
 class AdminDashboardScreen extends ConsumerWidget {
   const AdminDashboardScreen({super.key});
@@ -84,8 +86,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // --- ¡INICIO DE LA MODIFICACIÓN! ---
-                // 2. NUEVO BOTÓN
+                // Botón Mantenedor de Perfiles
                 ElevatedButton.icon(
                   icon: const Icon(Icons.assignment_ind),
                   label: const Text('Mantenedor de Perfiles'),
@@ -100,7 +101,6 @@ class AdminDashboardScreen extends ConsumerWidget {
                     textStyle: const TextStyle(fontSize: 18)
                   ),
                 ),
-                // --- FIN DE LA MODIFICACIÓN ---
                 const SizedBox(height: 16),
 
                 // Botón Mantenedor de Concursos
@@ -118,6 +118,24 @@ class AdminDashboardScreen extends ConsumerWidget {
                     textStyle: const TextStyle(fontSize: 18)
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // --- ¡NUEVO BOTÓN! (Añadido aquí) ---
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.settings),
+                  label: const Text('Variables Globales'),
+                  onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const ManageConfiguracionScreen(),
+                    ));
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo.shade600,
+                    padding: const EdgeInsets.all(20),
+                    textStyle: const TextStyle(fontSize: 18)
+                  ),
+                ),
+                // --- FIN NUEVO BOTÓN ---
                 const SizedBox(height: 16),
 
                 // Botón Ingresar Métricas
