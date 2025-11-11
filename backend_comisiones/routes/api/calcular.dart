@@ -4,7 +4,7 @@ import 'dart:async'; // Para Future.wait
 import 'dart:math';   // Para min()
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mysql_client/mysql_client.dart';
-import 'package:http/http.dart' as http; // <-- ¡NUEVO IMPORT!
+import 'package:http/http.dart' as http; // Import para la API de UF
 
 // --- Constantes de Claves Lógicas (Deben coincidir con tu BD) ---
 const String CLAVE_TRAMO_P1 = 'TRAMO_P1';
@@ -41,7 +41,8 @@ Future<Response> onRequest(RequestContext context) async {
     'uf_pyme_m': safeParseDouble(jsonBody['uf_pyme_m']),
     'ref_p1': safeParseInt(jsonBody['ref_p1']),
     'ref_p2': safeParseInt(jsonBody['ref_p2']),
-    'sim_ranking': jsonBody['sim_ranking'] as String?,
+    'sim_ranking_tipo': jsonBody['sim_ranking_tipo'] as String?,
+    'sim_ranking_pos': safeParseInt(jsonBody['sim_ranking_pos']),
   };
   
   final double totalUfTramos = (inputs['uf_p1'] as double) + (inputs['uf_p2'] as double);
@@ -101,7 +102,7 @@ Future<Response> onRequest(RequestContext context) async {
     metricas['total_uf_pyme'] = totalUfPyme;
     metricas['total_uf_general'] = totalUfGeneral;
     metricas['total_contratos_ref'] = totalContratosReferidos;
-    metricas['valor_uf_dia'] = VALOR_UF; // Añadimos la UF por si se necesita
+    metricas['valor_uf_dia'] = VALOR_UF; 
 
     // --- 3. MOTOR DE CÁLCULO ---
     double totalBonos = 0;
@@ -171,11 +172,15 @@ Future<Response> onRequest(RequestContext context) async {
           bonoCalculado = await _calcularPyme(conn, reglaId, metricas['uf_pyme_m'] as double, VALOR_UF);
           break;
 
-        // --- Bonos de Ranking (Monto Fijo) ---
+        // --- Lógica de Ranking Dinámica ---
         case CLAVE_RANKING_SEGUROS:
         case CLAVE_RANKING_PYME:
         case CLAVE_RANKING_ISAPRE:
-          bonoCalculado = _calcularRanking(regla, metricas);
+          final tipoSimulado = metricas['sim_ranking_tipo'] as String?;
+          final posSimulada = (metricas['sim_ranking_pos'] as int).toDouble();
+          if (tipoSimulado == clave && posSimulada > 0) {
+            bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, posSimulada);
+          }
           break;
 
         default:
@@ -203,6 +208,7 @@ Future<Response> onRequest(RequestContext context) async {
       'renta_final': rentaFinal.round(),
       'sueldo_base': SUELDO_BASE.round(),
       'total_bonos': totalBonos.round(),
+      'valor_uf_usado': VALOR_UF.round(), // <-- ¡AQUÍ ESTÁ TU LÍNEA!
       'desglose': desglose,
       'debug_metricas_usadas': metricas, // Para depuración
     });
@@ -281,7 +287,6 @@ String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metric
   final minContratos = safeParseInt(regla['requisito_min_contratos']);
 
   final ufEjecutivo = (metricas['total_uf_general'] as double?) ?? 0.0;
-  // ¡Importante! El doc dice 85%, asumimos que el supervisor ingresa "85" y no "0.85"
   final tasaEjecutivo = (metricas['tasa_recaudacion'] as num?)?.toDouble() ?? 0.0; 
   final contratosEjecutivo = (metricas['total_contratos_ref'] as int?) ?? 0;
 
@@ -315,7 +320,6 @@ Future<double> _buscarMontoFijoEnTramos(MySQLConnection conn, int reglaId, doubl
 
   if (tramoRes.rows.isNotEmpty) {
     final tramoData = tramoRes.rows.first.assoc();
-    // 'monto_pago' es un monto fijo (ej: 50000)
     return double.parse(tramoData['monto_pago']!);
   }
   return 0.0;
@@ -344,45 +348,5 @@ Future<double> _calcularPyme(MySQLConnection conn, int reglaId, double uf, doubl
     final double bonoEnPesos = (uf * porcentaje) * valorUf;
     return bonoEnPesos;
   }
-  return 0.0;
-}
-
-
-// --- HELPER: Cálculo Ranking (Hardcodeado del doc) ---
-double _calcularRanking(Map<String, String?> regla, Map<String, dynamic> metricas) {
-  final rankingSimulado = metricas['sim_ranking'] as String?;
-  final claveRegla = regla['clave_logica']!;
-
-  const montosRanking = {
-    // Seguros
-    'RANK_SEG_1': 400000.0,
-    'RANK_SEG_2_3': 350000.0,
-    'RANK_SEG_4_5': 300000.0,
-    'RANK_SEG_6_8': 200000.0,
-    'RANK_SEG_9_10': 150000.0,
-    
-    // PYME
-    'RANK_PYME_1': 400000.0,
-    'RANK_PYME_2_3': 350000.0,
-    'RANK_PYME_4_5': 300000.0,
-    'RANK_PYME_6_7': 150000.0,
-    
-    // Isapre
-    'RANK_ISAPRE_1': 500000.0,
-    'RANK_ISAPRE_2_3': 400000.0,
-    'RANK_ISAPRE_4_5': 300000.0,
-    'RANK_ISAPRE_6_8': 150000.0,
-  };
-
-  if (rankingSimulado == null) {
-    return 0.0;
-  }
-  
-  // El ranking simulado (ej: 'RANK_SEG_1') debe pertenecer
-  // al concurso activo (ej: 'RANK_SEG')
-  if (rankingSimulado.startsWith(claveRegla)) {
-     return montosRanking[rankingSimulado] ?? 0.0;
-  }
-  
   return 0.0;
 }

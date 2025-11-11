@@ -10,15 +10,12 @@ import 'package:frontend_comisiones_v2/providers/auth_provider.dart';
 const String _apiUrl = 'http://localhost:8080'; // O tu puerto
 
 // --- API Client Interno ---
-// (Un helper para todas las llamadas de admin)
-
 class AdminApiClient {
   final String _token;
   AdminApiClient(this._token);
 
   // --- Usuarios ---
   Future<List<AdminUser>> getUsuarios() async {
-    // ... (función sin cambios)
     final response = await http.get(
       Uri.parse('$_apiUrl/api/usuarios'),
       headers: {
@@ -34,7 +31,6 @@ class AdminApiClient {
     }
   }
   Future<void> updateUser(int userId, Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.put(
       Uri.parse('$_apiUrl/api/usuarios/$userId'),
       headers: {
@@ -48,7 +44,6 @@ class AdminApiClient {
     }
   }
   Future<void> createUser(Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.post(
       Uri.parse('$_apiUrl/api/usuarios'),
       headers: {
@@ -64,7 +59,6 @@ class AdminApiClient {
 
   // --- Equipos ---
   Future<List<AdminTeam>> getEquipos() async {
-    // ... (función sin cambios)
     final response = await http.get(
       Uri.parse('$_apiUrl/api/equipos'),
       headers: {
@@ -80,7 +74,6 @@ class AdminApiClient {
     }
   }
   Future<void> createTeam(Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.post(
       Uri.parse('$_apiUrl/api/equipos'),
       headers: {
@@ -94,7 +87,6 @@ class AdminApiClient {
     }
   }
   Future<void> updateTeam(int teamId, Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.put(
       Uri.parse('$_apiUrl/api/equipos/$teamId'),
       headers: {
@@ -108,7 +100,6 @@ class AdminApiClient {
     }
   }
   Future<void> deleteTeam(int teamId) async {
-    // ... (función sin cambios)
     final response = await http.delete(
       Uri.parse('$_apiUrl/api/equipos/$teamId'),
       headers: {
@@ -122,7 +113,6 @@ class AdminApiClient {
 
   // --- Perfiles ---
   Future<List<AdminProfile>> getPerfiles() async {
-    // ... (función sin cambios)
     final response = await http.get(
       Uri.parse('$_apiUrl/api/perfiles'),
       headers: {
@@ -137,8 +127,6 @@ class AdminApiClient {
       throw Exception('Error al cargar perfiles');
     }
   }
-
-  // POST /api/perfiles
   Future<void> createProfile(Map<String, dynamic> data) async {
     final response = await http.post(
       Uri.parse('$_apiUrl/api/perfiles'),
@@ -152,8 +140,6 @@ class AdminApiClient {
       throw Exception('Error al crear perfil: ${response.body}');
     }
   }
-
-  // PUT /api/perfiles/{id}
   Future<void> updateProfile(int profileId, Map<String, dynamic> data) async {
     final response = await http.put(
       Uri.parse('$_apiUrl/api/perfiles/$profileId'),
@@ -167,8 +153,6 @@ class AdminApiClient {
       throw Exception('Error al actualizar perfil: ${response.body}');
     }
   }
-
-  // DELETE /api/perfiles/{id}
   Future<void> deleteProfile(int profileId) async {
     final response = await http.delete(
       Uri.parse('$_apiUrl/api/perfiles/$profileId'),
@@ -180,10 +164,8 @@ class AdminApiClient {
       throw Exception('Error al eliminar perfil: ${response.body}');
     }
   }
-
-  // --- ¡INICIO DE NUEVOS MÉTODOS (Configuracion)! ---
   
-  // GET /api/configuracion
+  // --- Configuracion ---
   Future<List<AdminConfig>> getConfiguracion() async {
     final response = await http.get(
       Uri.parse('$_apiUrl/api/configuracion'),
@@ -194,14 +176,11 @@ class AdminApiClient {
     );
     if (response.statusCode == 200) {
       final List<dynamic> jsonData = jsonDecode(response.body);
-      // Usamos el nuevo modelo AdminConfig
       return jsonData.map((json) => AdminConfig.fromJson(json)).toList();
     } else {
       throw Exception('Error al cargar configuración');
     }
   }
-
-  // PUT /api/configuracion/{llave}
   Future<void> updateConfiguracion(String llave, Map<String, dynamic> data) async {
     final response = await http.put(
       Uri.parse('$_apiUrl/api/configuracion/$llave'),
@@ -216,11 +195,8 @@ class AdminApiClient {
     }
   }
   
-  // --- FIN DE NUEVOS MÉTODOS ---
-
   // --- Componentes ---
   Future<List<AdminComponent>> getComponentes() async {
-    // ... (función sin cambios)
     final response = await http.get(
       Uri.parse('$_apiUrl/api/componentes'),
       headers: {
@@ -238,7 +214,6 @@ class AdminApiClient {
 
   // --- Concursos ---
   Future<List<AdminConcurso>> getConcursos() async {
-    // ... (función sin cambios)
     final response = await http.get(
       Uri.parse('$_apiUrl/api/concursos'),
       headers: {
@@ -254,7 +229,6 @@ class AdminApiClient {
     }
   }
   Future<void> createConcurso(Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.post(
       Uri.parse('$_apiUrl/api/concursos'),
       headers: {
@@ -268,7 +242,6 @@ class AdminApiClient {
     }
   }
   Future<void> updateConcurso(int concursoId, Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.put(
       Uri.parse('$_apiUrl/api/concursos/$concursoId'),
       headers: {
@@ -282,7 +255,6 @@ class AdminApiClient {
     }
   }
   Future<void> deleteConcurso(int concursoId) async {
-    // ... (función sin cambios)
     final response = await http.delete(
       Uri.parse('$_apiUrl/api/concursos/$concursoId'),
       headers: {
@@ -296,7 +268,6 @@ class AdminApiClient {
 
   // --- Tramos ---
   Future<List<AdminTramo>> getTramos(int concursoId) async {
-    // ... (función sin cambios)
     final response = await http.get(
       Uri.parse('$_apiUrl/api/concursos/$concursoId/tramos'),
       headers: {
@@ -312,7 +283,6 @@ class AdminApiClient {
     }
   }
   Future<void> createTramo(int concursoId, Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.post(
       Uri.parse('$_apiUrl/api/concursos/$concursoId/tramos'),
       headers: {
@@ -326,7 +296,6 @@ class AdminApiClient {
     }
   }
   Future<void> updateTramo(int tramoId, Map<String, dynamic> data) async {
-    // ... (función sin cambios)
     final response = await http.put(
       Uri.parse('$_apiUrl/api/tramos/$tramoId'),
       headers: {
@@ -340,7 +309,6 @@ class AdminApiClient {
     }
   }
   Future<void> deleteTramo(int tramoId) async {
-    // ... (función sin cambios)
     final response = await http.delete(
       Uri.parse('$_apiUrl/api/tramos/$tramoId'),
       headers: {
@@ -351,12 +319,26 @@ class AdminApiClient {
       throw Exception('Error al eliminar tramo: ${response.body}');
     }
   }
+
+  // --- ¡NUEVA FUNCIÓN PARA MÉTRICAS! ---
+  Future<void> saveMetrica(Map<String, dynamic> data) async {
+    final response = await http.post(
+      Uri.parse('$_apiUrl/api/metricas'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      },
+      body: jsonEncode(data),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Error al guardar métrica: ${response.body}');
+    }
+  }
 }
 
 // --- PROVIDERS ---
 
 final adminApiClientProvider = Provider<AdminApiClient>((ref) {
-  // ... (provider sin cambios)
   final authState = ref.watch(authProvider);
   if (authState is Authenticated) {
     return AdminApiClient(authState.token);
@@ -367,25 +349,22 @@ final adminApiClientProvider = Provider<AdminApiClient>((ref) {
 // --- Providers de Lectura Simple (FutureProvider) ---
 
 final userListProvider = FutureProvider<List<AdminUser>>((ref) {
-  // ... (provider sin cambios)
   final apiClient = ref.watch(adminApiClientProvider);
   return apiClient.getUsuarios();
 });
 
 final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
-  // ... (provider sin cambios)
   final apiClient = ref.watch(adminApiClientProvider);
   return apiClient.getComponentes();
 });
 
 // --- Providers de Notificadores (CRUD Completo) ---
+// (UserUpdateNotifier, ConcursoCreateNotifier, TramoListNotifier, ConcursoListNotifier, TeamListNotifier, ProfileListNotifier... sin cambios)
 
 final userUpdateProvider = StateNotifierProvider<UserUpdateNotifier, AsyncValue<void>>((ref) {
-  // ... (provider sin cambios)
   return UserUpdateNotifier(ref);
 });
 class UserUpdateNotifier extends StateNotifier<AsyncValue<void>> {
-  // ... (clase sin cambios)
   final Ref _ref;
   UserUpdateNotifier(this._ref) : super(const AsyncData(null)); 
   Future<void> saveChanges(int userId, Map<String, dynamic> data) async {
@@ -402,11 +381,9 @@ class UserUpdateNotifier extends StateNotifier<AsyncValue<void>> {
 }
 
 final concursoCreateProvider = StateNotifierProvider<ConcursoCreateNotifier, AsyncValue<void>>((ref) {
-  // ... (provider sin cambios)
   return ConcursoCreateNotifier(ref);
 });
 class ConcursoCreateNotifier extends StateNotifier<AsyncValue<void>> {
-  // ... (clase sin cambios)
   final Ref _ref;
   ConcursoCreateNotifier(this._ref) : super(const AsyncData(null)); 
   Future<void> saveConcurso(Map<String, dynamic> data) async {
@@ -426,7 +403,6 @@ final tramoListProvider = AsyncNotifierProvider.family<TramoListNotifier, List<A
   () => TramoListNotifier(),
 );
 class TramoListNotifier extends FamilyAsyncNotifier<List<AdminTramo>, int> {
-  // ... (clase sin cambios)
   @override
   Future<List<AdminTramo>> build(int concursoId) async {
     final apiClient = ref.read(adminApiClientProvider);
@@ -469,7 +445,6 @@ final concursoListProvider = AsyncNotifierProvider<ConcursoListNotifier, List<Ad
   () => ConcursoListNotifier(),
 );
 class ConcursoListNotifier extends AsyncNotifier<List<AdminConcurso>> {
-  // ... (clase sin cambios)
   @override
   Future<List<AdminConcurso>> build() async {
     final apiClient = ref.read(adminApiClientProvider);
@@ -481,11 +456,9 @@ class ConcursoListNotifier extends AsyncNotifier<List<AdminConcurso>> {
     state = AsyncData(
       state.value!.map((c) {
         if (c.id == concursoId) {
-          // Esta lógica de merge es compleja, la simplificamos
-          // recargando todo, pero para UI optimista, esto es lo que
-          // se haría. La tuya estaba bien.
+          // Lógica de merge optimista (requiere .toJson() en el modelo)
           return AdminConcurso.fromJson({
-             ...c.toJson(), // <--- Necesitaríamos un toJson() en el modelo
+             ...c.toJson(), 
              ...data 
           });
         }
@@ -528,7 +501,6 @@ final teamListProvider = AsyncNotifierProvider<TeamListNotifier, List<AdminTeam>
   () => TeamListNotifier(),
 );
 class TeamListNotifier extends AsyncNotifier<List<AdminTeam>> {
-  // ... (clase sin cambios)
   @override
   Future<List<AdminTeam>> build() async {
     final apiClient = ref.read(adminApiClientProvider);
@@ -566,83 +538,71 @@ class TeamListNotifier extends AsyncNotifier<List<AdminTeam>> {
   }
 }
 
-
-// (Este ya lo tenías, sin cambios)
 final profileListProvider = AsyncNotifierProvider<ProfileListNotifier, List<AdminProfile>>(
   () => ProfileListNotifier(),
 );
-
 class ProfileListNotifier extends AsyncNotifier<List<AdminProfile>> {
-  
-  // El 'build' carga la lista inicial
   @override
   Future<List<AdminProfile>> build() async {
     final apiClient = ref.read(adminApiClientProvider);
     return apiClient.getPerfiles();
   }
-
-  // --- Funciones CRUD ---
-
   Future<void> addProfile(Map<String, dynamic> data) async {
     final apiClient = ref.read(adminApiClientProvider);
-    state = const AsyncLoading(); // Poner en "cargando"
+    state = const AsyncLoading(); 
     try {
       await apiClient.createProfile(data);
-      ref.invalidateSelf(); // Recargar la lista
+      ref.invalidateSelf(); 
     } catch (e, s) {
       state = AsyncError(e, s);
     }
   }
-
   Future<void> updateProfile(int profileId, Map<String, dynamic> data) async {
     final apiClient = ref.read(adminApiClientProvider);
     state = const AsyncLoading();
     try {
       await apiClient.updateProfile(profileId, data);
-      ref.invalidateSelf(); // Recargar la lista
+      ref.invalidateSelf(); 
     } catch (e, s) {
       state = AsyncError(e, s);
     }
   }
-
   Future<void> removeProfile(int profileId) async {
     final apiClient = ref.read(adminApiClientProvider);
     state = const AsyncLoading();
     try {
       await apiClient.deleteProfile(profileId);
-      ref.invalidateSelf(); // Recargar la lista
+      ref.invalidateSelf(); 
     } catch (e, s) {
       state = AsyncError(e, s);
     }
   }
 }
 
-// --- ¡INICIO DE NUEVO PROVIDER (Configuracion)! ---
-// (Añadir al final del archivo)
-
 final configListProvider = AsyncNotifierProvider<ConfigListNotifier, List<AdminConfig>>(
   () => ConfigListNotifier(),
 );
-
 class ConfigListNotifier extends AsyncNotifier<List<AdminConfig>> {
-  
   @override
   Future<List<AdminConfig>> build() async {
     final apiClient = ref.read(adminApiClientProvider);
     return apiClient.getConfiguracion();
   }
-
   Future<void> updateConfig(String llave, Map<String, dynamic> data) async {
     final apiClient = ref.read(adminApiClientProvider);
     final previousState = state;
     state = const AsyncLoading();
     try {
       await apiClient.updateConfiguracion(llave, data);
-      ref.invalidateSelf(); // Recargar la lista
+      ref.invalidateSelf(); 
     } catch (e, s) {
       state = AsyncError(e, s);
-      state = previousState; // Revertir si falla
+      state = previousState; 
     }
   }
 }
-// --- FIN DE NUEVO PROVIDER ---
+
+// --- ¡NUEVO PROVIDER PARA LA PANTALLA DE MÉTRICAS! ---
+// Usamos un StateProvider simple para manejar el estado de guardado
+// (para mostrar un spinner en el botón "Guardar")
+final metricSaveLoadingProvider = StateProvider<bool>((ref) => false);

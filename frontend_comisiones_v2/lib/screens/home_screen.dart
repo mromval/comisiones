@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart'; // ¡Importar para formatear números!
 import '../providers/auth_provider.dart';
 
 // --- Providers (sin cambios) ---
@@ -17,8 +18,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  // --- ¡INICIO DE LA MODIFICACIÓN! ---
-  
   // Controladores para todos los inputs
   final _ufP1Controller = TextEditingController();
   final _ufP2Controller = TextEditingController();
@@ -26,14 +25,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _ufPymeMandatoController = TextEditingController();
   final _refP1Controller = TextEditingController();
   final _refP2Controller = TextEditingController();
-
-  // Lista de controladores para manejarlos fácilmente
+  
+  // Controles para Ranking
+  final _rankingPosController = TextEditingController(); 
+  String? _selectedRankingTipo; 
+  
   late final List<TextEditingController> _controllers;
 
-  // Variable para el ranking
-  String? _selectedRanking;
-  
-  // --- FIN DE LA MODIFICACIÓN ---
+  // --- ¡NUEVO! Formateador de números ---
+  final numberFormatter = NumberFormat.decimalPattern('es_CL');
 
   // Función para llamar a tu API de cálculo
   Future<void> _calculateCommissions() async {
@@ -46,38 +46,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(calculationLoadingProvider.notifier).state = true;
     ref.read(calculationResultProvider.notifier).state = null;
 
-    // --- ¡INICIO DE LA MODIFICACIÓN! ---
-    // Helper para parsear de forma segura
     double safeParseDouble(String text) => double.tryParse(text) ?? 0.0;
     int safeParseInt(String text) => int.tryParse(text) ?? 0;
 
-    // 3. Preparar los datos y la llamada HTTP
     final body = jsonEncode({
-      // Concurso de Tramos (Ej: 1 al 17 y 18 al 30)
       'uf_p1': safeParseDouble(_ufP1Controller.text),
       'uf_p2': safeParseDouble(_ufP2Controller.text),
-      
-      // Concurso PYME (Transferencia y Mandato)
       'uf_pyme_t': safeParseDouble(_ufPymeTransferenciaController.text),
       'uf_pyme_m': safeParseDouble(_ufPymeMandatoController.text),
-      
-      // Concurso Referidos (N° Contratos)
       'ref_p1': safeParseInt(_refP1Controller.text),
       'ref_p2': safeParseInt(_refP2Controller.text),
-      
-      // Simulación de Ranking
-      'sim_ranking': _selectedRanking, // Puede ser null
+      'sim_ranking_tipo': _selectedRankingTipo, 
+      'sim_ranking_pos': safeParseInt(_rankingPosController.text), 
     });
-    // --- FIN DE LA MODIFICACIÓN ---
 
     try {
       final response = await http.post(
-        Uri.parse('http://localhost:8080/api/calcular'), // Tu URL del backend
+        Uri.parse('http://localhost:8080/api/calcular'), 
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: body, // Enviamos el nuevo body
+        body: body, 
       );
 
       if (response.statusCode == 200) {
@@ -104,24 +94,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  // --- ¡MODIFICADO! ---
-  // Función para habilitar el botón
   void _onTextFieldChanged() {
     setState(() {
-      // Solo forzamos el redibujo. La lógica está en el botón.
+      // Solo forzamos el redibujo
     });
   }
 
-  // Helper para saber si el botón debe estar activo
   bool _canCalculate() {
-    // El botón se activa si CUALQUIER campo tiene texto
-    return _controllers.any((controller) => controller.text.isNotEmpty);
+    if (_controllers.any((controller) => controller.text.isNotEmpty)) {
+      return true;
+    }
+    if (_selectedRankingTipo != null && _rankingPosController.text.isNotEmpty) {
+      return true;
+    }
+    return false;
   }
 
   @override
   void initState() {
     super.initState();
-    // --- ¡MODIFICADO! ---
     _controllers = [
       _ufP1Controller,
       _ufP2Controller,
@@ -129,9 +120,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _ufPymeMandatoController,
       _refP1Controller,
       _refP2Controller,
+      _rankingPosController, 
     ];
-    
-    // Añadimos el listener a todos los controllers
     for (final controller in _controllers) {
       controller.addListener(_onTextFieldChanged);
     }
@@ -139,15 +129,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
-    // --- ¡MODIFICADO! ---
-    // Limpiamos y disponemos todos los controllers
     for (final controller in _controllers) {
       controller.removeListener(_onTextFieldChanged);
       controller.dispose();
     }
     super.dispose();
   }
-  // --- FIN DE LA MODIFICACIÓN ---
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +166,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600), // Más ancho
+            constraints: const BoxConstraints(maxWidth: 600), 
             child: Card(
               elevation: 8,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -199,22 +186,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // --- ¡INICIO DEL NUEVO FORMULARIO! ---
-                    // Usamos un LiseView para scrolling
+                    // --- Formulario ---
                     SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.4, // Alto limitado
+                      height: MediaQuery.of(context).size.height * 0.4, 
                       child: ListView(
                         children: [
                           _buildSectionTitle(context, 'Concurso Tramos (Seguros)'),
                           _buildTextField(
                             _ufP1Controller, 
-                            'UF Ventas Período 1 (Ej: 1-17 Nov)', 
+                            'UF Ventas Período 1', 
                             Icons.currency_bitcoin
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
                             _ufP2Controller, 
-                            'UF Ventas Período 2 (Ej: 18-30 Nov)', 
+                            'UF Ventas Período 2', 
                             Icons.currency_bitcoin
                           ),
                           
@@ -236,33 +222,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           _buildSectionTitle(context, 'Concurso Referidos (Isapre)'),
                            _buildTextField(
                             _refP1Controller, 
-                            'N° Contratos Período 1 (Ej: 1-16 Oct)', 
+                            'N° Contratos Período 1', 
                             Icons.assignment,
                             isDecimal: false
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
                             _refP2Controller, 
-                            'N° Contratos Período 2 (Ej: 17-30 Oct)', 
+                            'N° Contratos Período 2', 
                             Icons.assignment,
                             isDecimal: false
                           ),
                           
                           const Divider(height: 32),
                           _buildSectionTitle(context, 'Simulación Ranking (Opcional)'),
-                          _buildDropdown(),
+                          _buildRankingDropdown(),
+                          const SizedBox(height: 16),
+                          
+                          if (_selectedRankingTipo != null)
+                            _buildTextField(
+                              _rankingPosController, 
+                              'Ingresa tu Posición (Ej: 1)', 
+                              Icons.emoji_events,
+                              isDecimal: false
+                            ),
 
                         ],
                       ),
                     ),
-                    // --- FIN DEL NUEVO FORMULARIO! ---
                     
                     const SizedBox(height: 24),
                     
                     isCalculating
                         ? const CircularProgressIndicator(color: Colors.deepPurple)
                         : ElevatedButton.icon(
-                            // --- ¡LÓGICA DE ACTIVACIÓN MODIFICADA! ---
                             onPressed: _canCalculate() ? _calculateCommissions : null,
                             icon: const Icon(Icons.calculate),
                             label: const Text('Calcular Comisión'),
@@ -278,7 +271,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           
                     const SizedBox(height: 32),
 
-                    // --- Sección de Resultados (Sin cambios, ¡reutilizable!) ---
+                    // --- Sección de Resultados ---
                     if (result != null)
                       _buildResultDisplay(result, context)
                     else
@@ -299,7 +292,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- NUEVOS HELPERS PARA EL FORMULARIO ---
+  // --- HELPERS PARA EL FORMULARIO ---
 
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
@@ -329,44 +322,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildDropdown() {
+  Widget _buildRankingDropdown() {
     return DropdownButtonFormField<String>(
-      value: _selectedRanking,
+      value: _selectedRankingTipo,
       decoration: InputDecoration(
-        labelText: 'Simular Posición en Ranking',
-        prefixIcon: Icon(Icons.emoji_events, color: Colors.deepPurple.shade400),
+        labelText: 'Selecciona Tipo de Ranking',
+        prefixIcon: Icon(Icons.bar_chart, color: Colors.deepPurple.shade400),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
       ),
-      items: [
-        // Opciones basadas en el doc
-        const DropdownMenuItem(
+      items: const [
+        DropdownMenuItem(
           value: null,
           child: Text('No simular ranking', style: TextStyle(fontStyle: FontStyle.italic)),
         ),
-        const DropdownMenuItem(value: 'RANK_SEG_1', child: Text('Ranking Seguros (1° Lugar)')),
-        const DropdownMenuItem(value: 'RANK_SEG_2_3', child: Text('Ranking Seguros (2° - 3° Lugar)')),
-        const DropdownMenuItem(value: 'RANK_SEG_4_5', child: Text('Ranking Seguros (4° - 5° Lugar)')),
-        const DropdownMenuItem(value: 'RANK_PYME_1', child: Text('Ranking PYME (1° Lugar)')),
-        const DropdownMenuItem(value: 'RANK_PYME_2_3', child: Text('Ranking PYME (2° - 3° Lugar)')),
-        const DropdownMenuItem(value: 'RANK_ISAPRE_1', child: Text('Ranking Isapre (1° Lugar)')),
-        const DropdownMenuItem(value: 'RANK_ISAPRE_2_3', child: Text('Ranking Isapre (2° - 3° Lugar)')),
+        DropdownMenuItem(value: 'RANK_SEG', child: Text('Ranking Seguros')),
+        DropdownMenuItem(value: 'RANK_PYME', child: Text('Ranking PYME')),
+        DropdownMenuItem(value: 'RANK_ISAPRE', child: Text('Ranking Isapre')),
       ],
       onChanged: (String? newValue) {
         setState(() {
-          _selectedRanking = newValue;
+          _selectedRankingTipo = newValue;
+          if (newValue == null) {
+            _rankingPosController.clear();
+          }
         });
       },
     );
   }
   
-  // --- FIN DE NUEVOS HELPERS ---
-
   // --- Widget de Resultados (Extraído) ---
   Widget _buildResultDisplay(Map<String, dynamic> result, BuildContext context) {
-    // Usamos el NumberFormat que ya teníamos en admin
-    // final numberFormatter = NumberFormat.decimalPattern('es_CL');
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -378,7 +364,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           textAlign: TextAlign.center,
         ),
         Text(
-          '\$${result['renta_final']?.toStringAsFixed(0) ?? '0'}',
+          '\$${numberFormatter.format(result['renta_final'] ?? 0)}',
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 color: Colors.green.shade700,
                 fontWeight: FontWeight.bold,
@@ -391,19 +377,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // Helper para construir los detalles del desglose (Sin cambios)
+  // --- ¡FUNCIÓN MODIFICADA PARA MOSTRAR LA UF! ---
   List<Widget> _buildResultDetails(Map<String, dynamic> result, BuildContext context) {
     final List<Widget> widgets = [
       ListTile(
         leading: const Icon(Icons.attach_money, color: Colors.deepPurple),
         title: const Text('Sueldo Base'),
-        trailing: Text('\$${result['sueldo_base']?.toStringAsFixed(0) ?? '0'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        trailing: Text('\$${numberFormatter.format(result['sueldo_base'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
       ListTile(
         leading: const Icon(Icons.star, color: Colors.deepPurple),
         title: const Text('Total Bonos'),
-        trailing: Text('\$${result['total_bonos']?.toStringAsFixed(0) ?? '0'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        trailing: Text('\$${numberFormatter.format(result['total_bonos'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
+      // --- ¡WIDGET AÑADIDO PARA LA UF! ---
+      ListTile(
+        leading: const Icon(Icons.analytics_outlined, color: Colors.deepPurple),
+        title: const Text('Valor UF (usado en cálculo)'),
+        trailing: Text('\$${numberFormatter.format(result['valor_uf_usado'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      // --- FIN DEL WIDGET AÑADIDO ---
       const Divider(),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
