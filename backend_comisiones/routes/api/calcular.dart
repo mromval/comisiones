@@ -41,8 +41,9 @@ Future<Response> onRequest(RequestContext context) async {
     'uf_pyme_m': safeParseDouble(jsonBody['uf_pyme_m']),
     'ref_p1': safeParseInt(jsonBody['ref_p1']),
     'ref_p2': safeParseInt(jsonBody['ref_p2']),
-    'sim_ranking_tipo': jsonBody['sim_ranking_tipo'] as String?,
-    'sim_ranking_pos': safeParseInt(jsonBody['sim_ranking_pos']),
+    
+    // --- ¡CAMBIO AQUÍ! Aceptamos un mapa de rankings ---
+    'sim_rankings': jsonBody['sim_rankings'] as Map<String, dynamic>? ?? {},
   };
   
   // --- TOTALIZADORES (usados para los requisitos) ---
@@ -128,25 +129,24 @@ Future<Response> onRequest(RequestContext context) async {
       desglose.add('No se encontraron concursos activos para tu perfil este mes.');
     }
 
+    // --- ¡CAMBIO AQUÍ! Leemos el mapa de rankings ANTES del loop ---
+    final simRankings = metricas['sim_rankings'] as Map<String, dynamic>;
+
     for (final row in reglasActivas.rows) {
       final regla = row.assoc();
       final nombreComponente = regla['nombre_componente']!;
       final clave = regla['clave_logica']!;
       final reglaId = int.parse(regla['regla_id']!);
       
-      // 1. Verificar Requisitos (¡MODIFICADO!)
-      // Ahora pasamos la clave para que sepa qué total revisar
       final String? motivoFallo = _checkRequisitos(regla, metricas, clave); 
       if (motivoFallo != null) {
         desglose.add('Bono "$nombreComponente" NO OBTENIDO: $motivoFallo');
         continue; 
       }
 
-      // 2. Si pasa, calcular el bono
       double bonoCalculado = 0;
       
       switch (clave) {
-        // --- Bonos de Monto Fijo (Tramos y Referidos) ---
         case CLAVE_TRAMO_P1:
           bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p1'] as double);
           break;
@@ -159,8 +159,6 @@ Future<Response> onRequest(RequestContext context) async {
         case CLAVE_REF_P2:
           bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, (metricas['ref_p2'] as int).toDouble());
           break;
-          
-        // --- Bonos de Porcentaje (% de UF) ---
         case CLAVE_PYME_T:
           bonoCalculado = await _calcularPyme(conn, reglaId, metricas['uf_pyme_t'] as double, VALOR_UF);
           break;
@@ -168,29 +166,29 @@ Future<Response> onRequest(RequestContext context) async {
           bonoCalculado = await _calcularPyme(conn, reglaId, metricas['uf_pyme_m'] as double, VALOR_UF);
           break;
 
-        // --- Lógica de Ranking Dinámica ---
+        // --- ¡LÓGICA DE RANKING MODIFICADA! ---
         case CLAVE_RANKING_SEGUROS:
         case CLAVE_RANKING_PYME:
         case CLAVE_RANKING_ISAPRE:
-          final tipoSimulado = metricas['sim_ranking_tipo'] as String?;
-          final posSimulada = (metricas['sim_ranking_pos'] as int).toDouble();
-          if (tipoSimulado == clave && posSimulada > 0) {
+          // Buscamos si el mapa 'sim_rankings' tiene una entrada para esta clave (ej: 'RANK_SEG')
+          final posSimulada = (simRankings[clave] as int?)?.toDouble() ?? 0.0;
+          if (posSimulada > 0) {
+            // Si la tiene (ej: 3), buscamos el monto para esa posición
             bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, posSimulada);
           }
           break;
+        // --- FIN DE LA MODIFICACIÓN ---
 
         default:
           desglose.add('Regla "$nombreComponente" (clave: $clave) no implementada');
       }
 
-      // 3. Aplicar TOPE (si existe)
       final double? topeRegla = double.tryParse(regla['tope_monto'] ?? '');
       if (topeRegla != null && bonoCalculado > topeRegla) {
         desglose.add('Bono "$nombreComponente" aplicado con TOPE de \$${topeRegla.toStringAsFixed(0)} (Original: \$${bonoCalculado.toStringAsFixed(0)})');
         bonoCalculado = topeRegla;
       }
       
-      // 4. Sumar al total
       if (bonoCalculado > 0) {
         desglose.add('Bono "$nombreComponente": \$${bonoCalculado.toStringAsFixed(0)}');
         totalBonos += bonoCalculado;
@@ -267,7 +265,7 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
 }
 
 
-// --- ¡HELPER DE REQUISITOS MODIFICADO! ---
+// --- HELPER: Chequeo de Requisitos (Modificado) ---
 String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metricas, String claveLogica) {
   
   double? safeParseDouble(String? val) => (val == null || val.isEmpty) ? null : double.tryParse(val);
@@ -277,49 +275,28 @@ String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metric
   final minTasa = safeParseDouble(regla['requisito_tasa_recaudacion']);
   final minContratos = safeParseInt(regla['requisito_min_contratos']);
 
-  // --- ¡INICIO DE LA LÓGICA CORREGIDA! ---
-  // 1. Determinar qué métrica total usar para cada requisito
-  
-  // Requisito de UF:
-  // Por defecto, usa el total general.
   double ufEjecutivo = (metricas['total_uf_general'] as double?) ?? 0.0;
   String ufTipo = "Total General";
   
   if (claveLogica.startsWith('TRAMO_') || claveLogica == CLAVE_RANKING_SEGUROS) {
-    // Si es un bono de Tramos (Seguros) o Ranking de Seguros, el requisito de UF aplica a "total_uf_tramos".
     ufEjecutivo = (metricas['total_uf_tramos'] as double?) ?? 0.0;
     ufTipo = "Total Tramos";
   } else if (claveLogica.startsWith('PYME_') || claveLogica == CLAVE_RANKING_PYME) {
-    // Si es un bono PYME o Ranking PYME, el requisito de UF aplica a "total_uf_pyme".
     ufEjecutivo = (metricas['total_uf_pyme'] as double?) ?? 0.0;
     ufTipo = "Total PYME";
   }
-  // (Si es de Referidos, el minUf se seguirá aplicando al total general, lo cual es correcto
-  // según el doc, ej: "terminar el mes sobre 15 UF para Contratos indefinidos ( todos los productos...)")
-  //
   
-  // Requisito de Contratos:
-  // (Solo aplica a bonos de Referidos y Ranking Isapre)
-  int contratosEjecutivo = 0;
-  if (claveLogica.startsWith('REF_') || claveLogica == CLAVE_RANKING_ISAPRE) {
-      contratosEjecutivo = (metricas['total_contratos_ref'] as int?) ?? 0;
-  }
-  
-  // Requisito de Tasa:
-  // (Aplica a casi todo, se toma la métrica general)
+  int contratosEjecutivo = (metricas['total_contratos_ref'] as int?) ?? 0;
   final tasaEjecutivo = (metricas['tasa_recaudacion'] as double?) ?? 0.0; 
-  // --- FIN DE LA LÓGICA CORREGIDA ---
 
-  // 2. Ejecutar las validaciones
-  
   if (minUf != null && ufEjecutivo < minUf) {
-    return 'No cumples el Mínimo de UF ($ufTipo) (Requerido: $minUf / Tienes: $ufEjecutivo)';
+    return 'Mínimo $minUf UF ($ufTipo)';
   }
   if (minTasa != null && tasaEjecutivo < minTasa) {
-    return 'No cumples la Tasa de Recaudación (Requerido: $minTasa% / Tienes: $tasaEjecutivo%)';
+    return 'Mínimo $minTasa% Tasa Recaudación';
   }
   if (minContratos != null && contratosEjecutivo < minContratos) {
-    return 'No cumples el Mínimo de Contratos (Requerido: $minContratos / Tienes: $contratosEjecutivo)';
+    return 'Mínimo $minContratos Contratos';
   }
   
   return null; // ¡Pasa todos los requisitos!
@@ -363,10 +340,7 @@ Future<double> _calcularPyme(MySQLConnection conn, int reglaId, double uf, doubl
 
   if (tramoRes.rows.isNotEmpty) {
     final tramoData = tramoRes.rows.first.assoc();
-    // 'monto_pago' es un porcentaje (ej: 0.30)
     final double porcentaje = double.parse(tramoData['monto_pago']!);
-    
-    // Convertimos a pesos
     final double bonoEnPesos = (uf * porcentaje) * valorUf;
     return bonoEnPesos;
   }

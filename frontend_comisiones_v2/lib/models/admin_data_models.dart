@@ -1,6 +1,4 @@
 // lib/models/admin_data_models.dart
-
-// (AdminUser, AdminTeam... sin cambios)
 class AdminUser {
   final int id;
   final String email;
@@ -50,7 +48,6 @@ class AdminTeam {
   }
 }
 
-// Representa a un perfil de comisión de la lista GET /api/perfiles
 class AdminProfile {
   final int id;
   final String nombrePerfil;
@@ -71,7 +68,6 @@ class AdminProfile {
   }
 }
 
-// (AdminConcurso, AdminTramo, AdminComponent... sin cambios)
 class AdminConcurso {
   final int id;
   final String periodoInicio;
@@ -123,7 +119,6 @@ class AdminConcurso {
     );
   }
 
-  // --- ¡MÉTODO AÑADIDO QUE ARREGLA EL ERROR! ---
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -187,24 +182,19 @@ class AdminComponent {
   }
 }
 
-// --- ¡NUEVA CLASE AÑADIDA EN EL PASO ANTERIOR! ---
-// Representa un ítem de la tabla de Configuracion
 class AdminConfig {
   final String llave;
-  final String valor;
-  final String? descripcion;
+  final String? valor; // <-- ¡CAMBIO AQUÍ!
 
   AdminConfig({
     required this.llave,
-    required this.valor,
-    this.descripcion,
+    this.valor, // <-- ¡CAMBIO AQUÍ!
   });
 
   factory AdminConfig.fromJson(Map<String, dynamic> json) {
     return AdminConfig(
       llave: json['llave'] as String,
-      valor: json['valor'] as String,
-      descripcion: json['descripcion'] as String?,
+      valor: json['valor'] as String?, // <-- ¡CAMBIO AQUÍ!
     );
   }
 }

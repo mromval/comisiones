@@ -56,7 +56,7 @@ class AdminApiClient {
       throw Exception('Error al crear usuario: ${response.body}');
     }
   }
-  // --- ¡NUEVA FUNCIÓN! ---
+  // --- ¡NUEVA FUNCIÓN! (Para Inactivar) ---
   Future<void> deleteUser(int userId) async {
     final response = await http.delete(
       Uri.parse('$_apiUrl/api/usuarios/$userId'),
@@ -364,12 +364,6 @@ final adminApiClientProvider = Provider<AdminApiClient>((ref) {
 
 // --- Providers de Lectura Simple (FutureProvider) ---
 
-// (¡Este provider será reemplazado!)
-// final userListProvider = FutureProvider<List<AdminUser>>((ref) {
-//   final apiClient = ref.watch(adminApiClientProvider);
-//   return apiClient.getUsuarios();
-// });
-
 final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
   final apiClient = ref.watch(adminApiClientProvider);
   return apiClient.getComponentes();
@@ -425,8 +419,6 @@ class UserUpdateNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 }
-
-// ... (El resto de providers: ConcursoCreateNotifier, TramoListNotifier, ConcursoListNotifier, TeamListNotifier, ProfileListNotifier, ConfigListNotifier, metricSaveLoadingProvider ... no cambian)
 
 final concursoCreateProvider = StateNotifierProvider<ConcursoCreateNotifier, AsyncValue<void>>((ref) {
   return ConcursoCreateNotifier(ref);
@@ -630,27 +622,41 @@ class ProfileListNotifier extends AsyncNotifier<List<AdminProfile>> {
   }
 }
 
+// --- ¡INICIO DE LA MODIFICACIÓN (ConfigListNotifier)! ---
 final configListProvider = AsyncNotifierProvider<ConfigListNotifier, List<AdminConfig>>(
   () => ConfigListNotifier(),
 );
+
 class ConfigListNotifier extends AsyncNotifier<List<AdminConfig>> {
   @override
   Future<List<AdminConfig>> build() async {
     final apiClient = ref.read(adminApiClientProvider);
     return apiClient.getConfiguracion();
   }
-  Future<void> updateConfig(String llave, Map<String, dynamic> data) async {
+
+  // Modificado para aceptar 'dynamic' y convertir 'DateTime' a String
+  Future<void> updateConfig(String llave, dynamic valor) async { // <- Acepta dynamic
     final apiClient = ref.read(adminApiClientProvider);
     final previousState = state;
-    state = const AsyncLoading();
+    state = const AsyncLoading(); // Muestra cargando
     try {
-      await apiClient.updateConfiguracion(llave, data);
-      ref.invalidateSelf(); 
+      // Si el valor es DateTime, lo formateamos a 'YYYY-MM-DD'
+      String valorParaAPI;
+      if (valor is DateTime) {
+        valorParaAPI = '${valor.year}-${valor.month.toString().padLeft(2, '0')}-${valor.day.toString().padLeft(2, '0')}';
+      } else {
+        valorParaAPI = valor.toString();
+      }
+
+      await apiClient.updateConfiguracion(llave, {'valor': valorParaAPI}); // <- Envía un mapa con 'valor'
+      ref.invalidateSelf(); // Vuelve a cargar la configuración desde la BD
     } catch (e, s) {
       state = AsyncError(e, s);
-      state = previousState; 
+      state = previousState; // Revierte el estado en caso de error
+      throw Exception('Error al actualizar configuración: $e'); // Propaga el error
     }
   }
 }
+// --- FIN DE LA MODIFICACIÓN ---
 
 final metricSaveLoadingProvider = StateProvider<bool>((ref) => false);

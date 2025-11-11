@@ -16,7 +16,6 @@ class EditTramosScreen extends ConsumerStatefulWidget {
 
 class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
   
-  // (Controladores y lógica de initState, dispose, _selectDate, _onSaveConcursoDetails... sin cambios)
   late DateTime _selectedStartDate;
   late DateTime _selectedEndDate;
   final _minUfController = TextEditingController();
@@ -128,7 +127,6 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
         foregroundColor: Colors.white,
       ),
       body: Container(
-        // ... (decoración sin cambios) ...
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.indigo.shade50, Colors.indigo.shade100],
@@ -153,7 +151,7 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                   child: Text(
-                    'Tramos de Pago', // Título genérico, está bien
+                    'Tramos de Pago',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.indigo.shade800),
                   ),
                 ),
@@ -210,7 +208,6 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
         child: const Icon(Icons.add),
       ),
       bottomNavigationBar: Container(
-        // ... (botón de eliminar sin cambios) ...
         padding: const EdgeInsets.all(16.0),
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -232,7 +229,6 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
     );
   }
 
-  // --- Widget _buildConcursoEditor (Sin cambios) ---
   Widget _buildConcursoEditor(BuildContext context) {
     String startDate = DateFormat('dd/MM/yyyy').format(_selectedStartDate);
     String endDate = DateFormat('dd/MM/yyyy').format(_selectedEndDate);
@@ -292,7 +288,7 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
             const SizedBox(height: 16),
             _buildTextField(
               _tasaController, 
-              'Requisito Tasa Recaudación (Ej: 85.0)', // Texto de ayuda actualizado
+              'Requisito Tasa Recaudación (Ej: 85.0)',
               const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 16),
@@ -333,10 +329,8 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
       keyboardType: keyboardType,
     );
   }
-} // Fin de _EditTramosScreenState
+} 
 
-
-// --- Diálogo de Confirmación de Borrado (Sin cambios) ---
 void _showDeleteConfirmation(BuildContext context, WidgetRef ref, int concursoId, String concursoNombre) {
   showDialog(
     context: context,
@@ -529,7 +523,7 @@ void _showTramoDialog(
           ),
           ElevatedButton(
             child: Text(isEditing ? 'Guardar Cambios' : 'Añadir'),
-            onPressed: () async { // <-- ¡Convertido a async!
+            onPressed: () async {
               if (formKey.currentState?.validate() ?? false) {
                 final data = {
                   'tramo_desde_uf': double.parse(_desdeController.text),
@@ -546,7 +540,6 @@ void _showTramoDialog(
                   if(context.mounted) Navigator.of(context).pop();
                 
                 } catch (e) {
-                  // Si el provider falla (ej: "Campos Faltantes"), muestra el error
                    if(context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
