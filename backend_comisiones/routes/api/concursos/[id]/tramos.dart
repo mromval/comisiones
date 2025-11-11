@@ -1,3 +1,4 @@
+// routes/api/concursos/[id]/tramos.dart
 import 'dart:io';
 import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
@@ -12,51 +13,24 @@ Future<Response> onRequest(RequestContext context, String id) async {
     return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
   }
 
-  // Identificamos el tipo de concurso para saber a qué tabla de tramos llamar
-  final config = context.read<Map<String, String>>();
-  final conn = await MySQLConnection.createConnection(
-      host: config['DB_HOST']!, port: int.parse(config['DB_PORT']!),
-      userName: config['DB_USER']!, password: config['DB_PASS']!,
-      databaseName: config['DB_NAME']!,
-    );
-  await conn.connect();
-  final reglaRes = await conn.execute(
-    'SELECT cr.clave_logica FROM Reglas_Concurso rc JOIN Componentes_Renta cr ON rc.componente_id = cr.id WHERE rc.id = :id',
-    {'id': int.parse(id)}
-  );
-  if(reglaRes.rows.isEmpty) {
-    await conn.close();
-    return Response(statusCode: 404, body: 'Concurso no encontrado');
-  }
+  // Usamos el ID del concurso para todas las operaciones
+  final concursoId = int.parse(id);
   
-  final claveLogica = reglaRes.rows.first.assoc()['clave_logica'];
-  await conn.close(); // Cerramos la conexión de chequeo
-
-  // "Router" de lógica: Llama a la función correcta según la clave
-  switch(claveLogica) {
-    case 'TRAMO_UF':
-      return _handleTramosUF(context, id, config);
-    // Aquí añadiremos 'BONO_PYME', 'BONO_REFERIDOS'
-    default:
-      return Response(statusCode: 404, body: 'Mantenedor de tramos no implementado para este tipo de concurso.');
-  }
-}
-
-// --- MANEJADOR ESPECIALIZADO PARA TRAMOS_UF ---
-Future<Response> _handleTramosUF(RequestContext context, String concursoId, Map<String, String> config) async {
   switch (context.request.method) {
     case HttpMethod.get:
-      return _onGetTramosUF(context, concursoId, config);
+      return _onGet(context, concursoId);
     case HttpMethod.post:
-      return _onPostTramosUF(context, concursoId, config);
+      return _onPost(context, concursoId);
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 }
 
-// --- FUNCIÓN GET (LISTAR TRAMOS DE UF) ---
-Future<Response> _onGetTramosUF(RequestContext context, String concursoId, Map<String, String> config) async {
+// --- FUNCIÓN GET (LISTAR TRAMOS DE ESTE CONCURSO) ---
+Future<Response> _onGet(RequestContext context, int concursoId) async {
+  final config = context.read<Map<String, String>>();
   MySQLConnection? conn;
+
   try {
     conn = await MySQLConnection.createConnection(
       host: config['DB_HOST']!, port: int.parse(config['DB_PORT']!),
@@ -64,44 +38,47 @@ Future<Response> _onGetTramosUF(RequestContext context, String concursoId, Map<S
       databaseName: config['DB_NAME']!,
     );
     await conn.connect();
-    
-    // CONSULTA A LA TABLA CORREGIDA
+
+    // Buscamos todos los tramos que pertenecen a este ID de concurso
     final resultado = await conn.execute(
       '''
-      SELECT id, regla_id, tramo_desde_uf, tramo_hasta_uf, monto_periodo_1, monto_periodo_2
-      FROM Reglas_Tramos_UF
+      SELECT id, regla_id, tramo_desde_uf, tramo_hasta_uf, monto_pago
+      FROM Reglas_Tramos
       WHERE regla_id = :concursoId
       ORDER BY tramo_desde_uf ASC;
       ''',
-      {'concursoId': int.parse(concursoId)},
+      {'concursoId': concursoId},
     );
+
     final tramos = resultado.rows.map((row) => row.assoc()).toList();
     return Response.json(body: tramos);
 
   } catch (e) {
-    print('--- ¡ERROR EN GET /api/concursos/$concursoId/tramos (UF)! ---');
+    print('--- ¡ERROR EN GET /api/concursos/$concursoId/tramos! ---');
     print(e.toString());
-    return Response(statusCode: HttpStatus.internalServerError, body: 'Error al consultar tramos UF.');
+    return Response(statusCode: HttpStatus.internalServerError, body: 'Error al consultar tramos.');
   } finally {
     await conn?.close();
   }
 }
 
-// --- FUNCIÓN POST (CREAR UN NUEVO TRAMO DE UF) ---
-Future<Response> _onPostTramosUF(RequestContext context, String concursoId, Map<String, String> config) async {
+
+// --- FUNCIÓN POST (CREAR UN NUEVO TRAMO PARA ESTE CONCURSO) ---
+Future<Response> _onPost(RequestContext context, int concursoId) async {
+  final config = context.read<Map<String, String>>();
   MySQLConnection? conn;
+
   try {
     final payload = await context.request.body();
     final body = jsonDecode(payload) as Map<String, dynamic>;
     
-    // Leemos los nuevos campos
+    // ¡AHORA BUSCAMOS 'monto_pago'!
     final desdeUF = (body['tramo_desde_uf'] as num?)?.toDouble();
     final hastaUF = (body['tramo_hasta_uf'] as num?)?.toDouble();
-    final montoP1 = (body['monto_periodo_1'] as num?)?.toDouble();
-    final montoP2 = (body['monto_periodo_2'] as num?)?.toDouble();
+    final monto = (body['monto_pago'] as num?)?.toDouble(); // <-- Lógica corregida
 
-    if (desdeUF == null || hastaUF == null || montoP1 == null || montoP2 == null) {
-      return Response(statusCode: HttpStatus.badRequest, body: 'Faltan campos obligatorios.');
+    if (desdeUF == null || hastaUF == null || monto == null) {
+      return Response(statusCode: HttpStatus.badRequest, body: 'Faltan campos obligatorios: tramo_desde_uf, tramo_hasta_uf, monto_pago.');
     }
 
     conn = await MySQLConnection.createConnection(
@@ -110,28 +87,28 @@ Future<Response> _onPostTramosUF(RequestContext context, String concursoId, Map<
       databaseName: config['DB_NAME']!,
     );
     await conn.connect();
-    
-    // INSERTAMOS EN LA TABLA CORREGIDA
+
     await conn.execute(
       '''
-      INSERT INTO Reglas_Tramos_UF
-        (regla_id, tramo_desde_uf, tramo_hasta_uf, monto_periodo_1, monto_periodo_2)
+      INSERT INTO Reglas_Tramos
+        (regla_id, tramo_desde_uf, tramo_hasta_uf, monto_pago)
       VALUES
-        (:reglaId, :desde, :hasta, :montoP1, :montoP2)
+        (:reglaId, :desde, :hasta, :monto)
       ''',
       {
-        'reglaId': int.parse(concursoId),
+        'reglaId': concursoId,
         'desde': desdeUF,
         'hasta': hastaUF,
-        'montoP1': montoP1,
-        'montoP2': montoP2,
+        'monto': monto,
       },
     );
-    return Response(statusCode: HttpStatus.created, body: 'Tramo UF creado exitosamente');
+
+    return Response(statusCode: HttpStatus.created, body: 'Tramo creado exitosamente');
+
   } catch (e) {
-    print('--- ¡ERROR EN POST /api/concursos/$concursoId/tramos (UF)! ---');
+    print('--- ¡ERROR EN POST /api/concursos/$concursoId/tramos! ---');
     print(e.toString());
-    return Response(statusCode: HttpStatus.internalServerError, body: 'Error al crear el tramo UF.');
+    return Response(statusCode: HttpStatus.internalServerError, body: 'Error al crear el tramo.');
   } finally {
     await conn?.close();
   }

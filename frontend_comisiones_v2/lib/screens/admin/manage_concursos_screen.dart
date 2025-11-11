@@ -5,9 +5,8 @@ import 'package:frontend_comisiones_v2/models/admin_data_models.dart';
 import 'package:frontend_comisiones_v2/providers/admin_provider.dart';
 import 'package:frontend_comisiones_v2/screens/admin/create_concurso_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/edit_tramos_screen.dart';
-import 'package:frontend_comisiones_v2/screens/admin/edit_generic_rule_screen.dart';
+import 'package:frontend_comisiones_v2/screens/admin/edit_generic_rule_screen.dart'; // (Aún no la usamos)
 
-// Lo convertimos a StatefulWidget para poder usar el TabController
 class ManageConcursosScreen extends ConsumerStatefulWidget {
   const ManageConcursosScreen({super.key});
 
@@ -23,7 +22,7 @@ class _ManageConcursosScreenState extends ConsumerState<ManageConcursosScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this); // Dos pestañas
+    _tabController = TabController(length: 2, vsync: this); 
   }
 
   @override
@@ -52,10 +51,8 @@ class _ManageConcursosScreenState extends ConsumerState<ManageConcursosScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          // Pestaña 1: Concursos Activos
+        children: const [
           _ConcursoListView(isActive: true),
-          // Pestaña 2: Concursos Inactivos
           _ConcursoListView(isActive: false),
         ],
       ),
@@ -144,7 +141,7 @@ class _ConcursoListView extends ConsumerWidget {
 }
 
 
-// --- Tarjeta de Concurso (CON LA NAVEGACIÓN MODIFICADA) ---
+// --- ¡TARJETA CORREGIDA! ---
 class ConcursoListCard extends ConsumerWidget {
   const ConcursoListCard({super.key, required this.concurso});
   final AdminConcurso concurso;
@@ -162,42 +159,50 @@ class ConcursoListCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final periodo = '${_formatDate(concurso.periodoInicio)} - ${_formatDate(concurso.periodoFin)}';
     
+    // --- ¡INICIO DE LA CORRECCIÓN! ---
+    // Lista de todas las claves que usan el mantenedor de Tramos
+    const tramosKeys = [
+      'TRAMO_P1',
+      'TRAMO_P2',
+      'REF_P1',
+      'REF_P2',
+      'PYME_PCT_T',
+      'PYME_PCT_M',
+      'RANK_SEG',
+      'RANK_PYME',
+      'RANK_ISAPRE',
+    ];
+
+    // Determina si esta clave lógica usa el EditTramosScreen
+    final bool usaTramosScreen = tramosKeys.contains(concurso.claveLogica);
+    // --- FIN DE LA CORRECCIÓN ---
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        // --- ¡INICIO DE LA MODIFICACIÓN! ---
         onTap: () {
-          // "Router Inteligente"
-          switch (concurso.claveLogica) {
-            case 'TRAMO_UF':
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  // 1. Ahora pasamos el objeto 'concurso' completo
-                  builder: (context) => EditTramosScreen(
-                    concurso: concurso, 
-                  ),
+          // --- ¡LÓGICA DE NAVEGACIÓN CORREGIDA! ---
+          if (usaTramosScreen) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => EditTramosScreen(
+                  concurso: concurso, 
                 ),
-              );
-              break;
-            case 'FACTOR_FUGA':
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => EditGenericRuleScreen(concurso: concurso),
-                ),
-              );
-              break;
-            default:
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('El mantenedor para "${concurso.nombreComponente}" no está implementado aún.'),
-                  backgroundColor: Colors.orange,
-                ),
-              );
+              ),
+            );
+          } else {
+             // (Aquí irían otras lógicas futuras)
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('El mantenedor para "${concurso.nombreComponente}" (clave: ${concurso.claveLogica}) no está implementado aún.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
           }
         },
-        // --- FIN DE LA MODIFICACIÓN ---
+        // --- FIN DE LA CORRECCIÓN ---
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -225,6 +230,8 @@ class ConcursoListCard extends ConsumerWidget {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Actualizando estado...'), duration: Duration(seconds: 1)),
                       );
+                      // --- ¡SWITCH CORREGIDO! ---
+                      // El provider (que ya corregimos) maneja el bool
                       ref.read(concursoListProvider.notifier).updateConcurso(
                         concurso.id,
                         {'esta_activa': nuevoValor},

@@ -279,7 +279,9 @@ class AdminApiClient {
       final List<dynamic> jsonData = jsonDecode(response.body);
       return jsonData.map((json) => AdminTramo.fromJson(json)).toList();
     } else {
-      throw Exception('Error al cargar tramos');
+      // ¡Mejora! Propagamos el mensaje de error del backend
+      final body = jsonDecode(response.body);
+      throw Exception(body['message'] ?? 'Error al cargar tramos');
     }
   }
   Future<void> createTramo(int concursoId, Map<String, dynamic> data) async {
@@ -292,7 +294,9 @@ class AdminApiClient {
       body: jsonEncode(data),
     );
     if (response.statusCode != 201) {
-      throw Exception('Error al crear tramo: ${response.body}');
+      // ¡Mejora! Propagamos el mensaje de error del backend
+      final body = jsonDecode(response.body);
+      throw Exception(body['message'] ?? 'Error al crear tramo');
     }
   }
   Future<void> updateTramo(int tramoId, Map<String, dynamic> data) async {
@@ -305,7 +309,8 @@ class AdminApiClient {
       body: jsonEncode(data),
     );
     if (response.statusCode != 200) {
-      throw Exception('Error al actualizar tramo: ${response.body}');
+      final body = jsonDecode(response.body);
+      throw Exception(body['message'] ?? 'Error al actualizar tramo');
     }
   }
   Future<void> deleteTramo(int tramoId) async {
@@ -316,11 +321,12 @@ class AdminApiClient {
       },
     );
     if (response.statusCode != 200) {
-      throw Exception('Error al eliminar tramo: ${response.body}');
+      final body = jsonDecode(response.body);
+      throw Exception(body['message'] ?? 'Error al eliminar tramo');
     }
   }
 
-  // --- ¡NUEVA FUNCIÓN PARA MÉTRICAS! ---
+  // --- Métricas ---
   Future<void> saveMetrica(Map<String, dynamic> data) async {
     final response = await http.post(
       Uri.parse('$_apiUrl/api/metricas'),
@@ -359,7 +365,6 @@ final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
 });
 
 // --- Providers de Notificadores (CRUD Completo) ---
-// (UserUpdateNotifier, ConcursoCreateNotifier, TramoListNotifier, ConcursoListNotifier, TeamListNotifier, ProfileListNotifier... sin cambios)
 
 final userUpdateProvider = StateNotifierProvider<UserUpdateNotifier, AsyncValue<void>>((ref) {
   return UserUpdateNotifier(ref);
@@ -416,7 +421,9 @@ class TramoListNotifier extends FamilyAsyncNotifier<List<AdminTramo>, int> {
       await apiClient.createTramo(concursoId, data);
       ref.invalidateSelf(); 
     } catch (e, s) {
+      // Propagamos el error para que el diálogo lo muestre
       state = AsyncError(e, s);
+      throw Exception('Error al crear tramo: $e');
     }
   }
   Future<void> editTramo(int tramoId, Map<String, dynamic> data) async {
@@ -427,6 +434,7 @@ class TramoListNotifier extends FamilyAsyncNotifier<List<AdminTramo>, int> {
       ref.invalidateSelf(); 
     } catch (e, s) {
       state = AsyncError(e, s);
+      throw Exception('Error al editar tramo: $e');
     }
   }
   Future<void> removeTramo(int tramoId) async {
@@ -437,6 +445,7 @@ class TramoListNotifier extends FamilyAsyncNotifier<List<AdminTramo>, int> {
       ref.invalidateSelf();
     } catch (e, s) {
       state = AsyncError(e, s);
+      throw Exception('Error al eliminar tramo: $e');
     }
   }
 }
@@ -450,38 +459,43 @@ class ConcursoListNotifier extends AsyncNotifier<List<AdminConcurso>> {
     final apiClient = ref.read(adminApiClientProvider);
     return apiClient.getConcursos();
   }
+  
+  // --- ¡FUNCIÓN CORREGIDA PARA EL SWITCH! ---
   Future<void> updateConcurso(int concursoId, Map<String, dynamic> data) async {
     final apiClient = ref.read(adminApiClientProvider);
-    final previousState = state;
+    final previousState = state; // Guardar estado anterior
+    
+    // 1. Convertir bool a int ANTES de la actualización optimista
+    final Map<String, dynamic> mergedData = {...data};
+    if (mergedData.containsKey('esta_activa') && mergedData['esta_activa'] is bool) {
+      mergedData['esta_activa'] = (mergedData['esta_activa'] as bool) ? 1 : 0;
+    }
+
+    // 2. Actualización optimista (ahora recibe un int)
     state = AsyncData(
       state.value!.map((c) {
         if (c.id == concursoId) {
-          // Lógica de merge optimista (requiere .toJson() en el modelo)
           return AdminConcurso.fromJson({
              ...c.toJson(), 
-             ...data 
+             ...mergedData // Usamos el mapa con el int
           });
         }
         return c;
       }).toList(),
     );
+
+    // 3. Llamada a la API (enviamos el map original, el backend lo maneja)
     try {
-      await apiClient.updateConcurso(concursoId, data);
-      // Como el merge es complejo, mejor invalidamos
+      await apiClient.updateConcurso(concursoId, data); 
+      // 4. Refrescar desde el servidor para confirmar
       ref.invalidateSelf();
     } catch (e) {
+      // 5. Si la API falla, revertir
       state = previousState;
       throw Exception('Error al actualizar: $e');
     }
   }
-  Future<void> toggleStatus(AdminConcurso concurso) async {
-    final bool nuevoEstado = !concurso.estaActiva;
-    try {
-      await updateConcurso(concurso.id, {'esta_activa': nuevoEstado});
-    } catch (e) {
-      print('Error al cambiar estado: $e');
-    }
-  }
+
   Future<void> deleteConcurso(int concursoId) async {
     final apiClient = ref.read(adminApiClientProvider);
     final previousState = state;
@@ -537,6 +551,7 @@ class TeamListNotifier extends AsyncNotifier<List<AdminTeam>> {
     }
   }
 }
+
 
 final profileListProvider = AsyncNotifierProvider<ProfileListNotifier, List<AdminProfile>>(
   () => ProfileListNotifier(),
@@ -602,7 +617,4 @@ class ConfigListNotifier extends AsyncNotifier<List<AdminConfig>> {
   }
 }
 
-// --- ¡NUEVO PROVIDER PARA LA PANTALLA DE MÉTRICAS! ---
-// Usamos un StateProvider simple para manejar el estado de guardado
-// (para mostrar un spinner en el botón "Guardar")
 final metricSaveLoadingProvider = StateProvider<bool>((ref) => false);
