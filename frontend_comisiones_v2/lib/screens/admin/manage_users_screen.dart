@@ -12,6 +12,7 @@ class ManageUsersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // ¡MODIFICACIÓN! Ahora observamos el Notifier
     final asyncUsers = ref.watch(userListProvider);
 
     return Scaffold(
@@ -22,7 +23,8 @@ class ManageUsersScreen extends ConsumerWidget {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          return ref.refresh(userListProvider.future);
+          // ¡MODIFICACIÓN! Ahora invalidamos el Notifier
+          return ref.refresh(userListProvider.notifier);
         },
         child: Container(
           decoration: BoxDecoration(
@@ -45,19 +47,15 @@ class ManageUsersScreen extends ConsumerWidget {
                 return const Center(child: Text('No se encontraron usuarios.'));
               }
               
-              // --- ¡INICIO DE LA MEJORA GRÁFICA! ---
-              // 1. Centramos la lista
               return Center(
                 child: ConstrainedBox(
-                  // 2. Le damos un ancho máximo (puedes ajustar esto)
                   constraints: const BoxConstraints(maxWidth: 800),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    // 3. Envolvemos el ListView en un Card
                     child: Card(
                       elevation: 5,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      clipBehavior: Clip.antiAlias, // Para que la lista respete los bordes
+                      clipBehavior: Clip.antiAlias, 
                       child: ListView.builder(
                         padding: const EdgeInsets.only(top: 8, bottom: 8),
                         itemCount: users.length,
@@ -70,7 +68,6 @@ class ManageUsersScreen extends ConsumerWidget {
                   ),
                 ),
               );
-              // --- FIN DE LA MEJORA GRÁFICA ---
             },
           ),
         ),
@@ -83,7 +80,11 @@ class ManageUsersScreen extends ConsumerWidget {
             MaterialPageRoute(
               builder: (context) => const CreateUserScreen(),
             ),
-          );
+          ).then((_) {
+            // Cuando volvemos, invalidamos la lista de usuarios
+            // por si creamos uno nuevo.
+            ref.invalidate(userListProvider);
+          });
         },
         backgroundColor: Colors.indigo.shade600,
         foregroundColor: Colors.white,
@@ -94,7 +95,6 @@ class ManageUsersScreen extends ConsumerWidget {
 }
 
 // --- Widget separado para el item de la lista ---
-
 class UserListCard extends ConsumerWidget {
   const UserListCard({super.key, required this.user});
   final AdminUser user;
@@ -129,32 +129,100 @@ class UserListCard extends ConsumerWidget {
             ),
           ],
         ),
-        trailing: Chip(
-          label: Text(
-            user.rol.toUpperCase(),
-            style: TextStyle(
-              color: user.rol == 'supervisor' ? Colors.indigo.shade900 : Colors.deepPurple.shade900,
-              fontWeight: FontWeight.bold,
-              fontSize: 10,
-            ),
-          ),
-          backgroundColor: user.rol == 'supervisor' ? Colors.indigo.shade100 : Colors.deepPurple.shade100,
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          side: BorderSide.none,
-        ),
-        onTap: () {
-          // Invalidamos para que la pantalla de edición SIEMPRE tenga datos frescos
-          ref.invalidate(teamListProvider);
-          ref.invalidate(profileListProvider);
+        
+        // --- ¡INICIO DE LA MODIFICACIÓN! ---
+        // Reemplazamos el Chip con un PopupMenuButton
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'edit') {
+              // Misma lógica de "onTap"
+              ref.invalidate(teamListProvider);
+              ref.invalidate(profileListProvider);
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => EditUserScreen(user: user),
+                ),
+              ).then((_) {
+                // Cuando volvemos de editar, refrescamos
+                ref.invalidate(userListProvider);
+              });
 
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => EditUserScreen(user: user),
+            } else if (value == 'delete') {
+              // Lógica de inactivar
+              _showDeactivateConfirmation(context, ref, user);
+            }
+          },
+          itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+            PopupMenuItem<String>(
+              value: 'edit',
+              child: ListTile(
+                leading: Icon(Icons.edit, color: Colors.indigo.shade700), 
+                title: const Text('Editar')
+              ),
             ),
-          );
-        },
+            PopupMenuItem<String>(
+              value: 'delete',
+              child: ListTile(
+                leading: Icon(Icons.person_off, color: Colors.red.shade700), 
+                title: const Text('Inactivar', style: TextStyle(color: Colors.red))
+              ),
+            ),
+          ],
+          // Mostramos el ROL como el ícono del menú
+          icon: Chip(
+            label: Text(
+              user.rol.toUpperCase(),
+              style: TextStyle(
+                color: user.rol == 'supervisor' ? Colors.indigo.shade900 : Colors.deepPurple.shade900,
+                fontWeight: FontWeight.bold,
+                fontSize: 10,
+              ),
+            ),
+            backgroundColor: user.rol == 'supervisor' ? Colors.indigo.shade100 : Colors.deepPurple.shade100,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            side: BorderSide.none,
+          ),
+        ),
+        // Ya no necesitamos el onTap en el ListTile
+        onTap: null, 
+        // --- FIN DE LA MODIFICACIÓN! ---
       ),
     );
   }
+}
+
+// --- ¡NUEVO DIÁLOGO DE CONFIRMACIÓN! ---
+void _showDeactivateConfirmation(BuildContext context, WidgetRef ref, AdminUser user) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('¿Inactivar Usuario?'),
+      content: Text('¿Estás seguro de que deseas inactivar a "${user.nombreCompleto}"?\n\nEl usuario ya no podrá iniciar sesión, pero sus datos históricos se conservarán.'),
+      actions: [
+        TextButton(
+          child: const Text('Cancelar'),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          child: const Text('Sí, Inactivar'),
+          onPressed: () async {
+            try {
+              // ¡Llamamos al nuevo notifier!
+              await ref.read(userListProvider.notifier).removeUser(user.id);
+              if(context.mounted) Navigator.of(context).pop();
+            } catch (e) {
+              if(context.mounted) {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
+                );
+              }
+            }
+          },
+        ),
+      ],
+    ),
+  );
 }

@@ -56,6 +56,18 @@ class AdminApiClient {
       throw Exception('Error al crear usuario: ${response.body}');
     }
   }
+  // --- ¡NUEVA FUNCIÓN! ---
+  Future<void> deleteUser(int userId) async {
+    final response = await http.delete(
+      Uri.parse('$_apiUrl/api/usuarios/$userId'),
+      headers: {
+        'Authorization': 'Bearer $_token',
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Error al inactivar usuario: ${response.body}');
+    }
+  }
 
   // --- Equipos ---
   Future<List<AdminTeam>> getEquipos() async {
@@ -279,7 +291,6 @@ class AdminApiClient {
       final List<dynamic> jsonData = jsonDecode(response.body);
       return jsonData.map((json) => AdminTramo.fromJson(json)).toList();
     } else {
-      // ¡Mejora! Propagamos el mensaje de error del backend
       final body = jsonDecode(response.body);
       throw Exception(body['message'] ?? 'Error al cargar tramos');
     }
@@ -294,7 +305,6 @@ class AdminApiClient {
       body: jsonEncode(data),
     );
     if (response.statusCode != 201) {
-      // ¡Mejora! Propagamos el mensaje de error del backend
       final body = jsonDecode(response.body);
       throw Exception(body['message'] ?? 'Error al crear tramo');
     }
@@ -354,10 +364,11 @@ final adminApiClientProvider = Provider<AdminApiClient>((ref) {
 
 // --- Providers de Lectura Simple (FutureProvider) ---
 
-final userListProvider = FutureProvider<List<AdminUser>>((ref) {
-  final apiClient = ref.watch(adminApiClientProvider);
-  return apiClient.getUsuarios();
-});
+// (¡Este provider será reemplazado!)
+// final userListProvider = FutureProvider<List<AdminUser>>((ref) {
+//   final apiClient = ref.watch(adminApiClientProvider);
+//   return apiClient.getUsuarios();
+// });
 
 final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
   final apiClient = ref.watch(adminApiClientProvider);
@@ -365,6 +376,36 @@ final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
 });
 
 // --- Providers de Notificadores (CRUD Completo) ---
+
+// --- ¡INICIO DE LA MODIFICACIÓN (userListProvider)! ---
+// 1. Convertimos userListProvider a un AsyncNotifierProvider
+final userListProvider = AsyncNotifierProvider<UserListNotifier, List<AdminUser>>(
+  () => UserListNotifier(),
+);
+
+class UserListNotifier extends AsyncNotifier<List<AdminUser>> {
+  
+  @override
+  Future<List<AdminUser>> build() async {
+    final apiClient = ref.read(adminApiClientProvider);
+    return apiClient.getUsuarios();
+  }
+
+  // 2. Añadimos la función para inactivar
+  Future<void> removeUser(int userId) async {
+    final apiClient = ref.read(adminApiClientProvider);
+    state = const AsyncLoading();
+    try {
+      await apiClient.deleteUser(userId);
+      ref.invalidateSelf(); // Recargar la lista
+    } catch (e, s) {
+      state = AsyncError(e, s);
+      throw Exception('Error al inactivar usuario: $e');
+    }
+  }
+}
+// --- FIN DE LA MODIFICACIÓN ---
+
 
 final userUpdateProvider = StateNotifierProvider<UserUpdateNotifier, AsyncValue<void>>((ref) {
   return UserUpdateNotifier(ref);
@@ -378,12 +419,14 @@ class UserUpdateNotifier extends StateNotifier<AsyncValue<void>> {
       final apiClient = _ref.read(adminApiClientProvider);
       await apiClient.updateUser(userId, data);
       state = const AsyncData(null);
-      _ref.invalidate(userListProvider); 
+      _ref.invalidate(userListProvider); // 3. Esto sigue funcionando
     } catch (e, s) {
       state = AsyncError(e, s);
     }
   }
 }
+
+// ... (El resto de providers: ConcursoCreateNotifier, TramoListNotifier, ConcursoListNotifier, TeamListNotifier, ProfileListNotifier, ConfigListNotifier, metricSaveLoadingProvider ... no cambian)
 
 final concursoCreateProvider = StateNotifierProvider<ConcursoCreateNotifier, AsyncValue<void>>((ref) {
   return ConcursoCreateNotifier(ref);
@@ -421,7 +464,6 @@ class TramoListNotifier extends FamilyAsyncNotifier<List<AdminTramo>, int> {
       await apiClient.createTramo(concursoId, data);
       ref.invalidateSelf(); 
     } catch (e, s) {
-      // Propagamos el error para que el diálogo lo muestre
       state = AsyncError(e, s);
       throw Exception('Error al crear tramo: $e');
     }
@@ -460,37 +502,31 @@ class ConcursoListNotifier extends AsyncNotifier<List<AdminConcurso>> {
     return apiClient.getConcursos();
   }
   
-  // --- ¡FUNCIÓN CORREGIDA PARA EL SWITCH! ---
   Future<void> updateConcurso(int concursoId, Map<String, dynamic> data) async {
     final apiClient = ref.read(adminApiClientProvider);
-    final previousState = state; // Guardar estado anterior
+    final previousState = state; 
     
-    // 1. Convertir bool a int ANTES de la actualización optimista
     final Map<String, dynamic> mergedData = {...data};
     if (mergedData.containsKey('esta_activa') && mergedData['esta_activa'] is bool) {
       mergedData['esta_activa'] = (mergedData['esta_activa'] as bool) ? 1 : 0;
     }
 
-    // 2. Actualización optimista (ahora recibe un int)
     state = AsyncData(
       state.value!.map((c) {
         if (c.id == concursoId) {
           return AdminConcurso.fromJson({
              ...c.toJson(), 
-             ...mergedData // Usamos el mapa con el int
+             ...mergedData 
           });
         }
         return c;
       }).toList(),
     );
 
-    // 3. Llamada a la API (enviamos el map original, el backend lo maneja)
     try {
       await apiClient.updateConcurso(concursoId, data); 
-      // 4. Refrescar desde el servidor para confirmar
       ref.invalidateSelf();
     } catch (e) {
-      // 5. Si la API falla, revertir
       state = previousState;
       throw Exception('Error al actualizar: $e');
     }

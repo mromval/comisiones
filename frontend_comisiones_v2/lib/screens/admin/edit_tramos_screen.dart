@@ -16,12 +16,9 @@ class EditTramosScreen extends ConsumerStatefulWidget {
 
 class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
   
-  // Estados para las fechas
+  // (Controladores y lógica de initState, dispose, _selectDate, _onSaveConcursoDetails... sin cambios)
   late DateTime _selectedStartDate;
   late DateTime _selectedEndDate;
-
-  // --- ¡NUEVOS CONTROLADORES! ---
-  // (Para los campos de requisitos)
   final _minUfController = TextEditingController();
   final _tasaController = TextEditingController();
   final _minContratosController = TextEditingController();
@@ -30,12 +27,8 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
   @override
   void initState() {
     super.initState();
-    // Cargamos las fechas actuales
     _selectedStartDate = DateTime.parse(widget.concurso.periodoInicio);
     _selectedEndDate = DateTime.parse(widget.concurso.periodoFin);
-
-    // --- ¡NUEVO! ---
-    // Cargamos los requisitos actuales del concurso en los controladores
     _minUfController.text = widget.concurso.requisitoMinUfTotal?.toStringAsFixed(2) ?? '';
     _tasaController.text = widget.concurso.requisitoTasaRecaudacion?.toStringAsFixed(2) ?? '';
     _minContratosController.text = widget.concurso.requisitoMinContratos?.toString() ?? '';
@@ -51,7 +44,6 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
     super.dispose();
   }
 
-  // Helper para mostrar el selector de fechas
   Future<void> _selectDate(BuildContext context, bool isStartDate) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -67,27 +59,22 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
           _selectedEndDate = picked;
         }
       });
-      // Guardamos solo las fechas (los otros campos se guardan con el botón)
-      _onSaveConcursoDetails({'periodo_inicio': _selectedStartDate.toIso8601String().split('T').first,});
+      _onSaveConcursoDetails({
+        isStartDate ? 'periodo_inicio' : 'periodo_fin': picked.toIso8601String().split('T').first,
+      });
     }
   }
 
-  // --- ¡FUNCIÓN DE GUARDAR (ACTUALIZADA)! ---
-  // Ahora guarda TODOS los campos
   Future<void> _onSaveConcursoDetails([Map<String, dynamic>? dateData]) async {
-    
-    // Si no vinieron datos de fecha, son los de los textfields
     final data = dateData ?? {
       'requisito_min_uf_total': double.tryParse(_minUfController.text),
       'requisito_tasa_recaudacion': double.tryParse(_tasaController.text),
       'requisito_min_contratos': int.tryParse(_minContratosController.text),
       'tope_monto': double.tryParse(_topeController.text),
     };
-
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Guardando...'), duration: Duration(seconds: 1)),
     );
-
     try {
       await ref.read(concursoListProvider.notifier).updateConcurso(widget.concurso.id, data);
     } catch (e) {
@@ -98,12 +85,41 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
       }
     }
   }
-  // --- FIN DE LA ACTUALIZACIÓN ---
-
 
   @override
   Widget build(BuildContext context) {
     final asyncTramos = ref.watch(tramoListProvider(widget.concurso.id));
+    
+    // --- ¡INICIO DE LA MODIFICACIÓN! ---
+    // Determinamos las etiquetas que usará el diálogo
+    final String clave = widget.concurso.claveLogica;
+    String tituloDialogo = 'Añadir Nuevo Tramo';
+    String labelDesde = 'Desde UF';
+    String labelHasta = 'Hasta UF';
+    String labelMonto = 'Monto a Pagar \$';
+    TextInputType keyboardTipoMonto = TextInputType.number;
+    TextInputType keyboardTipoRango = const TextInputType.numberWithOptions(decimal: true);
+
+    if (clave.startsWith('PYME_PCT')) {
+      tituloDialogo = 'Añadir Rango de Porcentaje';
+      labelDesde = 'Desde UF';
+      labelHasta = 'Hasta UF';
+      labelMonto = 'Porcentaje (ej: 0.30 para 30%)';
+      keyboardTipoMonto = const TextInputType.numberWithOptions(decimal: true);
+    } else if (clave.startsWith('REF_')) {
+      tituloDialogo = 'Añadir Rango de Contratos';
+      labelDesde = 'Desde N° Contratos (ej: 1)';
+      labelHasta = 'Hasta N° Contratos (ej: 3)';
+      labelMonto = 'Monto a Pagar \$';
+      keyboardTipoRango = TextInputType.number;
+    } else if (clave.startsWith('RANK_')) {
+      tituloDialogo = 'Añadir Premio de Ranking';
+      labelDesde = 'Desde Posición (ej: 1)';
+      labelHasta = 'Hasta Posición (ej: 3)';
+      labelMonto = 'Monto a Pagar \$';
+      keyboardTipoRango = TextInputType.number;
+    }
+    // --- FIN DE LA MODIFICACIÓN ---
 
     return Scaffold(
       appBar: AppBar(
@@ -112,6 +128,7 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
         foregroundColor: Colors.white,
       ),
       body: Container(
+        // ... (decoración sin cambios) ...
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.indigo.shade50, Colors.indigo.shade100],
@@ -124,34 +141,29 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
           error: (err, stack) => Center(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text('Error al cargar tramos: $err'),
+              // Mostramos el mensaje de error que viene del provider
+              child: Text('Error al cargar tramos: ${err.toString()}'),
             ),
           ),
           data: (tramos) {
-            // Mostramos los Tramos Y las Fechas
-            // ¡CAMBIO! Envolvemos todo en un ListView para scrolling
             return ListView(
               children: [
-                // --- ¡WIDGET DE FECHAS Y REQUISITOS! ---
                 _buildConcursoEditor(context),
                 
-                // --- Título de la lista de Tramos ---
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                   child: Text(
-                    'Tramos de Pago',
+                    'Tramos de Pago', // Título genérico, está bien
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.indigo.shade800),
                   ),
                 ),
 
-                // --- Lista de Tramos ---
                 if (tramos.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(32.0),
                     child: Center(child: Text('Este concurso aún no tiene tramos.')),
                   )
                 else
-                  // Usamos shrinkWrap y physics para que funcione dentro del ListView
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(), 
@@ -159,7 +171,18 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
                     itemCount: tramos.length,
                     itemBuilder: (context, index) {
                       final tramo = tramos[index];
-                      return TramoListCard(tramo: tramo, concursoId: widget.concurso.id);
+                      // --- ¡MODIFICACIÓN! ---
+                      // Pasamos las etiquetas al Card y al diálogo de edición
+                      return TramoListCard(
+                        tramo: tramo, 
+                        concursoId: widget.concurso.id,
+                        labelDesde: labelDesde,
+                        labelHasta: labelHasta,
+                        labelMonto: labelMonto,
+                        keyboardTipoMonto: keyboardTipoMonto,
+                        keyboardTipoRango: keyboardTipoRango,
+                        tituloDialogo: tituloDialogo,
+                      );
                     },
                   ),
               ],
@@ -169,13 +192,25 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          _showTramoDialog(context, ref, concursoId: widget.concurso.id);
+          // --- ¡MODIFICACIÓN! ---
+          // Pasamos las etiquetas al diálogo de creación
+          _showTramoDialog(
+            context, ref, 
+            concursoId: widget.concurso.id,
+            labelDesde: labelDesde,
+            labelHasta: labelHasta,
+            labelMonto: labelMonto,
+            keyboardTipoMonto: keyboardTipoMonto,
+            keyboardTipoRango: keyboardTipoRango,
+            tituloDialogo: tituloDialogo,
+          );
         },
         backgroundColor: Colors.indigo.shade600,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
       bottomNavigationBar: Container(
+        // ... (botón de eliminar sin cambios) ...
         padding: const EdgeInsets.all(16.0),
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -197,8 +232,7 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
     );
   }
 
-  // --- ¡WIDGET ACTUALIZADO! ---
-  // Ahora es una tarjeta para editar Periodo Y Requisitos
+  // --- Widget _buildConcursoEditor (Sin cambios) ---
   Widget _buildConcursoEditor(BuildContext context) {
     String startDate = DateFormat('dd/MM/yyyy').format(_selectedStartDate);
     String endDate = DateFormat('dd/MM/yyyy').format(_selectedEndDate);
@@ -217,8 +251,6 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
               style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.indigo.shade800),
             ),
             const SizedBox(height: 16),
-            
-            // --- Editores de Fecha ---
             Row(
               children: [
                 Expanded(
@@ -246,10 +278,7 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
                 ),
               ],
             ),
-            
             const Divider(height: 32, thickness: 1),
-
-            // --- ¡NUEVOS CAMPOS DE REQUISITOS! ---
             Text(
               'Requisitos (Opcional)',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.indigo.shade700),
@@ -258,13 +287,13 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
             _buildTextField(
               _minUfController, 
               'Requisito Mínimo UF (Ej: 13)', 
-              TextInputType.numberWithOptions(decimal: true),
+              const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 16),
             _buildTextField(
               _tasaController, 
-              'Requisito Tasa Recaudación (Ej: 0.85)', 
-              TextInputType.numberWithOptions(decimal: true),
+              'Requisito Tasa Recaudación (Ej: 85.0)', // Texto de ayuda actualizado
+              const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -292,7 +321,6 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
     );
   }
 
-  // Helper para construir un TextField (¡Nuevo!)
   Widget _buildTextField(TextEditingController controller, String label, TextInputType keyboardType) {
     return TextFormField(
       controller: controller,
@@ -305,13 +333,11 @@ class _EditTramosScreenState extends ConsumerState<EditTramosScreen> {
       keyboardType: keyboardType,
     );
   }
-
 } // Fin de _EditTramosScreenState
 
 
 // --- Diálogo de Confirmación de Borrado (Sin cambios) ---
 void _showDeleteConfirmation(BuildContext context, WidgetRef ref, int concursoId, String concursoNombre) {
-  // ... (código idéntico) ...
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
@@ -335,33 +361,67 @@ void _showDeleteConfirmation(BuildContext context, WidgetRef ref, int concursoId
   );
 }
 
-// --- Tarjeta de Tramo (Sin cambios) ---
+// --- ¡TARJETA DE TRAMO MODIFICADA! ---
 class TramoListCard extends ConsumerWidget {
-  // ... (código idéntico) ...
   final AdminTramo tramo;
   final int concursoId;
-  const TramoListCard({super.key, required this.tramo, required this.concursoId});
+  // ¡Nuevos parámetros para las etiquetas!
+  final String labelDesde;
+  final String labelHasta;
+  final String labelMonto;
+  final TextInputType keyboardTipoRango;
+  final TextInputType keyboardTipoMonto;
+  final String tituloDialogo;
+
+  const TramoListCard({
+    super.key, 
+    required this.tramo, 
+    required this.concursoId,
+    required this.labelDesde,
+    required this.labelHasta,
+    required this.labelMonto,
+    required this.keyboardTipoRango,
+    required this.keyboardTipoMonto,
+    required this.tituloDialogo,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final numberFormatter = NumberFormat.decimalPattern('es_CL');
+    
+    // Mostramos "UF", "N°" o "Pos" dependiendo del label
+    String tituloRango = '${labelDesde.split(' ')[0]} ${tramo.tramoDesdeUf.toStringAsFixed(2)} - ${tramo.tramoHastaUf.toStringAsFixed(2)}';
+    
+    // Mostramos monto o %
+    String subtituloMonto = 'Paga: \$ ${numberFormatter.format(tramo.montoPago)}';
+    if (labelMonto.startsWith('Porcentaje')) {
+      subtituloMonto = 'Paga: ${(tramo.montoPago * 100).toStringAsFixed(0)}%';
+    }
+    
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), 
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
-        title: Text(
-          'UF: ${tramo.tramoDesdeUf.toStringAsFixed(2)} - ${tramo.tramoHastaUf.toStringAsFixed(2)}',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(tituloRango, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(
-          'Paga: \$ ${numberFormatter.format(tramo.montoPago)}',
+          subtituloMonto,
           style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 15),
         ),
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'edit') {
-              _showTramoDialog(context, ref, concursoId: concursoId, tramoAEditar: tramo);
+              _showTramoDialog(
+                context, ref, 
+                concursoId: concursoId, 
+                tramoAEditar: tramo,
+                labelDesde: labelDesde,
+                labelHasta: labelHasta,
+                labelMonto: labelMonto,
+                keyboardTipoMonto: keyboardTipoMonto,
+                keyboardTipoRango: keyboardTipoRango,
+                tituloDialogo: tituloDialogo,
+              );
             } else if (value == 'delete') {
               ref.read(tramoListProvider(concursoId).notifier).removeTramo(tramo.id);
             }
@@ -382,12 +442,52 @@ class TramoListCard extends ConsumerWidget {
   }
 }
 
-// --- Diálogo de Tramo (Sin cambios) ---
-void _showTramoDialog(BuildContext context, WidgetRef ref, {required int concursoId, AdminTramo? tramoAEditar}) {
-  // ... (código idéntico) ...
-  final _desdeController = TextEditingController(text: tramoAEditar?.tramoDesdeUf.toStringAsFixed(2) ?? '');
-  final _hastaController = TextEditingController(text: tramoAEditar?.tramoHastaUf.toStringAsFixed(2) ?? '');
-  final _montoController = TextEditingController(text: tramoAEditar?.montoPago.toStringAsFixed(0) ?? '');
+// --- ¡DIÁLOGO DE TRAMO MODIFICADO! ---
+void _showTramoDialog(
+  BuildContext context, 
+  WidgetRef ref, {
+  required int concursoId, 
+  AdminTramo? tramoAEditar,
+  // ¡Nuevos parámetros!
+  required String tituloDialogo,
+  required String labelDesde,
+  required String labelHasta,
+  required String labelMonto,
+  required TextInputType keyboardTipoRango,
+  required TextInputType keyboardTipoMonto,
+}) {
+  
+  // Formateamos el monto a pagar
+  // Si es un porcentaje (ej: 0.30), lo mostramos como tal.
+  // Si es un monto (ej: 50000), lo mostramos como entero.
+  String montoInicial = '';
+  if (tramoAEditar != null) {
+    if (labelMonto.startsWith('Porcentaje')) {
+      montoInicial = tramoAEditar.montoPago.toStringAsFixed(2);
+    } else {
+      montoInicial = tramoAEditar.montoPago.toStringAsFixed(0);
+    }
+  }
+  
+  // Formateamos los rangos
+  // Si es decimal (UF) lo mostramos con decimales.
+  // Si es entero (N° Contratos, Posición) lo mostramos como entero.
+  String desdeInicial = '';
+  String hastaInicial = '';
+  if (tramoAEditar != null) {
+    if (keyboardTipoRango == TextInputType.number) {
+      desdeInicial = tramoAEditar.tramoDesdeUf.toStringAsFixed(0);
+      hastaInicial = tramoAEditar.tramoHastaUf.toStringAsFixed(0);
+    } else {
+      desdeInicial = tramoAEditar.tramoDesdeUf.toStringAsFixed(2);
+      hastaInicial = tramoAEditar.tramoHastaUf.toStringAsFixed(2);
+    }
+  }
+
+  final _desdeController = TextEditingController(text: desdeInicial);
+  final _hastaController = TextEditingController(text: hastaInicial);
+  final _montoController = TextEditingController(text: montoInicial);
+  
   final bool isEditing = tramoAEditar != null;
   final formKey = GlobalKey<FormState>();
 
@@ -395,7 +495,7 @@ void _showTramoDialog(BuildContext context, WidgetRef ref, {required int concurs
     context: context,
     builder: (BuildContext context) {
       return AlertDialog(
-        title: Text(isEditing ? 'Editar Tramo' : 'Añadir Nuevo Tramo'),
+        title: Text(isEditing ? 'Editar Tramo' : tituloDialogo),
         content: Form(
           key: formKey,
           child: Column(
@@ -403,20 +503,20 @@ void _showTramoDialog(BuildContext context, WidgetRef ref, {required int concurs
             children: [
               TextFormField(
                 controller: _desdeController,
-                decoration: const InputDecoration(labelText: 'Desde UF'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true), 
+                decoration: InputDecoration(labelText: labelDesde),
+                keyboardType: keyboardTipoRango, 
                 validator: (value) => (value == null || value.isEmpty) ? 'Requerido' : null,
               ),
               TextFormField(
                 controller: _hastaController,
-                decoration: const InputDecoration(labelText: 'Hasta UF'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true), 
+                decoration: InputDecoration(labelText: labelHasta),
+                keyboardType: keyboardTipoRango, 
                 validator: (value) => (value == null || value.isEmpty) ? 'Requerido' : null,
               ),
               TextFormField(
                 controller: _montoController,
-                decoration: const InputDecoration(labelText: 'Monto a Pagar \$'),
-                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: labelMonto),
+                keyboardType: keyboardTipoMonto,
                 validator: (value) => (value == null || value.isEmpty) ? 'Requerido' : null,
               ),
             ],
@@ -429,19 +529,30 @@ void _showTramoDialog(BuildContext context, WidgetRef ref, {required int concurs
           ),
           ElevatedButton(
             child: Text(isEditing ? 'Guardar Cambios' : 'Añadir'),
-            onPressed: () {
+            onPressed: () async { // <-- ¡Convertido a async!
               if (formKey.currentState?.validate() ?? false) {
                 final data = {
                   'tramo_desde_uf': double.parse(_desdeController.text),
                   'tramo_hasta_uf': double.parse(_hastaController.text),
                   'monto_pago': double.parse(_montoController.text),
                 };
-                if (isEditing) {
-                  ref.read(tramoListProvider(concursoId).notifier).editTramo(tramoAEditar.id, data);
-                } else {
-                  ref.read(tramoListProvider(concursoId).notifier).addTramo(data);
+
+                try {
+                  if (isEditing) {
+                    await ref.read(tramoListProvider(concursoId).notifier).editTramo(tramoAEditar!.id, data);
+                  } else {
+                    await ref.read(tramoListProvider(concursoId).notifier).addTramo(data);
+                  }
+                  if(context.mounted) Navigator.of(context).pop();
+                
+                } catch (e) {
+                  // Si el provider falla (ej: "Campos Faltantes"), muestra el error
+                   if(context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+                    );
+                  }
                 }
-                Navigator.of(context).pop();
               }
             },
           ),

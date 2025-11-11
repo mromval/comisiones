@@ -45,6 +45,7 @@ Future<Response> onRequest(RequestContext context) async {
     'sim_ranking_pos': safeParseInt(jsonBody['sim_ranking_pos']),
   };
   
+  // --- TOTALIZADORES (usados para los requisitos) ---
   final double totalUfTramos = (inputs['uf_p1'] as double) + (inputs['uf_p2'] as double);
   final double totalUfPyme = (inputs['uf_pyme_t'] as double) + (inputs['uf_pyme_m'] as double);
   final double totalUfGeneral = totalUfTramos + totalUfPyme;
@@ -61,12 +62,10 @@ Future<Response> onRequest(RequestContext context) async {
     );
     await conn.connect();
 
-    // ¡Obtiene Sueldo Base y UF en paralelo!
     final valoresGlobales = await _getValoresGlobales(conn);
     final double SUELDO_BASE = valoresGlobales['sueldo_base']!;
     final double VALOR_UF = valoresGlobales['valor_uf']!;
     
-    // a) Buscar el perfil_id del usuario
     final perfilRes = await conn.execute(
       'SELECT perfil_id FROM Usuarios WHERE id = :id', {'id': usuarioId},
     );
@@ -76,12 +75,11 @@ Future<Response> onRequest(RequestContext context) async {
     final perfilId = perfilRes.rows.first.assoc()['perfil_id'];
     if (perfilId == null) {
       return Response.json(
-        statusCode: 400, // Bad Request
+        statusCode: 400,
         body: {'message': 'Tu usuario no tiene un Perfil de Comisión asignado. Contacta a un administrador.'},
       );
     }
 
-    // b) Buscar las métricas que cargó el supervisor (ej: tasa_recaudacion)
     final metricasRes = await conn.execute(
       '''
       SELECT nombre_metrica, valor FROM Metricas_Mensuales_Ejecutivo
@@ -93,10 +91,9 @@ Future<Response> onRequest(RequestContext context) async {
     final Map<String, dynamic> metricas = {};
     for (final metrica in metricasRes.rows) {
       final data = metrica.assoc();
-      metricas[data['nombre_metrica']!] = data['valor'];
+      metricas[data['nombre_metrica']!] = double.tryParse(data['valor'] ?? '0.0') ?? 0.0;
     }
     
-    // c) Juntar todas las métricas en un mapa
     metricas.addAll(inputs);
     metricas['total_uf_tramos'] = totalUfTramos;
     metricas['total_uf_pyme'] = totalUfPyme;
@@ -108,7 +105,6 @@ Future<Response> onRequest(RequestContext context) async {
     double totalBonos = 0;
     final List<String> desglose = [];
 
-    // d) Buscar las REGLAS ACTIVAS para este perfil y este mes
     final reglasActivas = await conn.execute(
       '''
       SELECT 
@@ -132,15 +128,15 @@ Future<Response> onRequest(RequestContext context) async {
       desglose.add('No se encontraron concursos activos para tu perfil este mes.');
     }
 
-    // e) Iterar sobre cada regla activa
     for (final row in reglasActivas.rows) {
       final regla = row.assoc();
       final nombreComponente = regla['nombre_componente']!;
       final clave = regla['clave_logica']!;
       final reglaId = int.parse(regla['regla_id']!);
       
-      // 1. Verificar Requisitos
-      final String? motivoFallo = _checkRequisitos(regla, metricas);
+      // 1. Verificar Requisitos (¡MODIFICADO!)
+      // Ahora pasamos la clave para que sepa qué total revisar
+      final String? motivoFallo = _checkRequisitos(regla, metricas, clave); 
       if (motivoFallo != null) {
         desglose.add('Bono "$nombreComponente" NO OBTENIDO: $motivoFallo');
         continue; 
@@ -208,9 +204,9 @@ Future<Response> onRequest(RequestContext context) async {
       'renta_final': rentaFinal.round(),
       'sueldo_base': SUELDO_BASE.round(),
       'total_bonos': totalBonos.round(),
-      'valor_uf_usado': VALOR_UF.round(), // <-- ¡AQUÍ ESTÁ TU LÍNEA!
+      'valor_uf_usado': VALOR_UF.round(), 
       'desglose': desglose,
-      'debug_metricas_usadas': metricas, // Para depuración
+      'debug_metricas_usadas': metricas, 
     });
 
   } catch (e) {
@@ -229,16 +225,13 @@ Future<Response> onRequest(RequestContext context) async {
 // --- HELPER: Obtener Sueldo Base y Valor UF ---
 Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
   
-  // 1. Preparamos las tareas en paralelo
   final fSueldo = conn.execute("SELECT valor FROM Configuracion WHERE llave = 'SUELDO_BASE'");
   final fUfFallback = conn.execute("SELECT valor FROM Configuracion WHERE llave = 'FALLBACK_VALOR_UF'");
   final fUfApi = http.get(Uri.parse('https://mindicador.cl/api/uf'));
 
-  // 2. Ejecutamos todo al mismo tiempo
   final results = await Future.wait([fSueldo, fUfFallback, fUfApi.catchError((_) => http.Response('', 404))]);
 
-  // 3. Procesamos Sueldo Base
-  double sueldoBase = 529000; // Default por si falla la BD
+  double sueldoBase = 529000; 
   try {
     final sueldoRes = results[0] as IResultSet;
     if (sueldoRes.rows.isNotEmpty) {
@@ -246,8 +239,7 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
     }
   } catch (e) { print('Error al leer SUELDO_BASE de la BD: $e'); }
 
-  // 4. Procesamos UF Fallback
-  double ufFallback = 40000; // Default
+  double ufFallback = 40000; 
   try {
     final ufFallbackRes = results[1] as IResultSet;
     if (ufFallbackRes.rows.isNotEmpty) {
@@ -255,7 +247,6 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
     }
   } catch (e) { print('Error al leer FALLBACK_VALOR_UF de la BD: $e'); }
   
-  // 5. Procesamos API UF
   double valorUf = ufFallback;
   try {
     final ufRes = results[2] as http.Response;
@@ -276,8 +267,8 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
 }
 
 
-// --- HELPER: Chequeo de Requisitos ---
-String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metricas) {
+// --- ¡HELPER DE REQUISITOS MODIFICADO! ---
+String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metricas, String claveLogica) {
   
   double? safeParseDouble(String? val) => (val == null || val.isEmpty) ? null : double.tryParse(val);
   int? safeParseInt(String? val) => (val == null || val.isEmpty) ? null : int.tryParse(val);
@@ -286,12 +277,43 @@ String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metric
   final minTasa = safeParseDouble(regla['requisito_tasa_recaudacion']);
   final minContratos = safeParseInt(regla['requisito_min_contratos']);
 
-  final ufEjecutivo = (metricas['total_uf_general'] as double?) ?? 0.0;
-  final tasaEjecutivo = (metricas['tasa_recaudacion'] as num?)?.toDouble() ?? 0.0; 
-  final contratosEjecutivo = (metricas['total_contratos_ref'] as int?) ?? 0;
+  // --- ¡INICIO DE LA LÓGICA CORREGIDA! ---
+  // 1. Determinar qué métrica total usar para cada requisito
+  
+  // Requisito de UF:
+  // Por defecto, usa el total general.
+  double ufEjecutivo = (metricas['total_uf_general'] as double?) ?? 0.0;
+  String ufTipo = "Total General";
+  
+  if (claveLogica.startsWith('TRAMO_') || claveLogica == CLAVE_RANKING_SEGUROS) {
+    // Si es un bono de Tramos (Seguros) o Ranking de Seguros, el requisito de UF aplica a "total_uf_tramos".
+    ufEjecutivo = (metricas['total_uf_tramos'] as double?) ?? 0.0;
+    ufTipo = "Total Tramos";
+  } else if (claveLogica.startsWith('PYME_') || claveLogica == CLAVE_RANKING_PYME) {
+    // Si es un bono PYME o Ranking PYME, el requisito de UF aplica a "total_uf_pyme".
+    ufEjecutivo = (metricas['total_uf_pyme'] as double?) ?? 0.0;
+    ufTipo = "Total PYME";
+  }
+  // (Si es de Referidos, el minUf se seguirá aplicando al total general, lo cual es correcto
+  // según el doc, ej: "terminar el mes sobre 15 UF para Contratos indefinidos ( todos los productos...)")
+  //
+  
+  // Requisito de Contratos:
+  // (Solo aplica a bonos de Referidos y Ranking Isapre)
+  int contratosEjecutivo = 0;
+  if (claveLogica.startsWith('REF_') || claveLogica == CLAVE_RANKING_ISAPRE) {
+      contratosEjecutivo = (metricas['total_contratos_ref'] as int?) ?? 0;
+  }
+  
+  // Requisito de Tasa:
+  // (Aplica a casi todo, se toma la métrica general)
+  final tasaEjecutivo = (metricas['tasa_recaudacion'] as double?) ?? 0.0; 
+  // --- FIN DE LA LÓGICA CORREGIDA ---
 
+  // 2. Ejecutar las validaciones
+  
   if (minUf != null && ufEjecutivo < minUf) {
-    return 'No cumples el Mínimo de UF (Requerido: $minUf / Tienes: $ufEjecutivo)';
+    return 'No cumples el Mínimo de UF ($ufTipo) (Requerido: $minUf / Tienes: $ufEjecutivo)';
   }
   if (minTasa != null && tasaEjecutivo < minTasa) {
     return 'No cumples la Tasa de Recaudación (Requerido: $minTasa% / Tienes: $tasaEjecutivo%)';
@@ -307,7 +329,7 @@ String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metric
 // --- HELPER: Busca un MONTO FIJO en la tabla de tramos ---
 Future<double> _buscarMontoFijoEnTramos(MySQLConnection conn, int reglaId, double valor) async {
   
-  if (valor <= 0) return 0.0; // No buscar si no hay ventas
+  if (valor <= 0) return 0.0; 
 
   final tramoRes = await conn.execute(
     '''

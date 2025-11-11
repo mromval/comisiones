@@ -32,7 +32,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   
   late final List<TextEditingController> _controllers;
 
-  // --- ¡NUEVO! Formateador de números ---
   final numberFormatter = NumberFormat.decimalPattern('es_CL');
 
   // Función para llamar a tu API de cálculo
@@ -90,7 +89,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       );
     } finally {
-      ref.read(calculationLoadingProvider.notifier).state = false;
+      // Usamos un post-frame callback para evitar errores de 'setState'
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(calculationLoadingProvider.notifier).state = false;
+        }
+      });
     }
   }
 
@@ -173,8 +177,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               margin: const EdgeInsets.all(24),
               child: Padding(
                 padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                
+                // --- ¡INICIO DE LA CORRECCIÓN! ---
+                // Reemplazamos el Column por un ListView
+                // para que toda la tarjeta sea scrolleable
+                child: ListView(
+                  shrinkWrap: true, // Importante para que funcione dentro del Card
                   children: [
                     Text(
                       'Ingresa tus Ventas del Mes',
@@ -186,75 +194,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // --- Formulario ---
-                    SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.4, 
-                      child: ListView(
-                        children: [
-                          _buildSectionTitle(context, 'Concurso Tramos (Seguros)'),
-                          _buildTextField(
-                            _ufP1Controller, 
-                            'UF Ventas Período 1', 
-                            Icons.currency_bitcoin
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            _ufP2Controller, 
-                            'UF Ventas Período 2', 
-                            Icons.currency_bitcoin
-                          ),
-                          
-                          const Divider(height: 32),
-                          _buildSectionTitle(context, 'Concurso PYME'),
-                          _buildTextField(
-                            _ufPymeTransferenciaController, 
-                            'UF PYME (Pago Transferencia)', 
-                            Icons.business_center
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            _ufPymeMandatoController, 
-                            'UF PYME (Pago Mandato)', 
-                            Icons.business_center
-                          ),
-                          
-                          const Divider(height: 32),
-                          _buildSectionTitle(context, 'Concurso Referidos (Isapre)'),
-                           _buildTextField(
-                            _refP1Controller, 
-                            'N° Contratos Período 1', 
-                            Icons.assignment,
-                            isDecimal: false
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            _refP2Controller, 
-                            'N° Contratos Período 2', 
-                            Icons.assignment,
-                            isDecimal: false
-                          ),
-                          
-                          const Divider(height: 32),
-                          _buildSectionTitle(context, 'Simulación Ranking (Opcional)'),
-                          _buildRankingDropdown(),
-                          const SizedBox(height: 16),
-                          
-                          if (_selectedRankingTipo != null)
-                            _buildTextField(
-                              _rankingPosController, 
-                              'Ingresa tu Posición (Ej: 1)', 
-                              Icons.emoji_events,
-                              isDecimal: false
-                            ),
-
-                        ],
-                      ),
+                    // --- Formulario (ya no está en un SizedBox con height fijo) ---
+                    _buildSectionTitle(context, 'Concurso Tramos (Seguros)'),
+                    _buildTextField(
+                      _ufP1Controller, 
+                      'UF Ventas Período 1', 
+                      Icons.currency_bitcoin
                     ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      _ufP2Controller, 
+                      'UF Ventas Período 2', 
+                      Icons.currency_bitcoin
+                    ),
+                    
+                    const Divider(height: 32),
+                    _buildSectionTitle(context, 'Concurso PYME'),
+                    _buildTextField(
+                      _ufPymeTransferenciaController, 
+                      'UF PYME (Pago Transferencia)', 
+                      Icons.business_center
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      _ufPymeMandatoController, 
+                      'UF PYME (Pago Mandato)', 
+                      Icons.business_center
+                    ),
+                    
+                    const Divider(height: 32),
+                    _buildSectionTitle(context, 'Concurso Referidos (Isapre)'),
+                      _buildTextField(
+                      _refP1Controller, 
+                      'N° Contratos Período 1', 
+                      Icons.assignment,
+                      isDecimal: false
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      _refP2Controller, 
+                      'N° Contratos Período 2', 
+                      Icons.assignment,
+                      isDecimal: false
+                    ),
+                    
+                    const Divider(height: 32),
+                    _buildSectionTitle(context, 'Simulación Ranking (Opcional)'),
+                    _buildRankingDropdown(),
+                    const SizedBox(height: 16),
+                    
+                    if (_selectedRankingTipo != null)
+                      _buildTextField(
+                        _rankingPosController, 
+                        'Ingresa tu Posición (Ej: 1)', 
+                        Icons.emoji_events,
+                        isDecimal: false
+                      ),
                     
                     const SizedBox(height: 24),
                     
                     isCalculating
-                        ? const CircularProgressIndicator(color: Colors.deepPurple)
+                        ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
                         : ElevatedButton.icon(
                             onPressed: _canCalculate() ? _calculateCommissions : null,
                             icon: const Icon(Icons.calculate),
@@ -268,12 +268,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               minimumSize: const Size(double.infinity, 50),
                             ),
                           ),
-                          
+                            
                     const SizedBox(height: 32),
 
                     // --- Sección de Resultados ---
+                    // Esta sección ahora es parte del ListView principal
                     if (result != null)
-                      _buildResultDisplay(result, context)
+                      _buildResultDisplay(result, context) 
                     else
                       Text(
                         'Ingresa tus ventas para simular tu renta.',
@@ -282,6 +283,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                         textAlign: TextAlign.center,
                       ),
+                    // --- FIN DE LA CORRECCIÓN ---
                   ],
                 ),
               ),
@@ -292,7 +294,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- HELPERS PARA EL FORMULARIO ---
+  // --- HELPERS PARA EL FORMULARIO (sin cambios) ---
 
   Widget _buildSectionTitle(BuildContext context, String title) {
     return Padding(
@@ -351,7 +353,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
   
-  // --- Widget de Resultados (Extraído) ---
+  // --- Widget de Resultados (Sin cambios) ---
   Widget _buildResultDisplay(Map<String, dynamic> result, BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -377,7 +379,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- ¡FUNCIÓN MODIFICADA PARA MOSTRAR LA UF! ---
+  // --- Helper de Desglose (Sin cambios) ---
   List<Widget> _buildResultDetails(Map<String, dynamic> result, BuildContext context) {
     final List<Widget> widgets = [
       ListTile(
@@ -390,13 +392,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('Total Bonos'),
         trailing: Text('\$${numberFormatter.format(result['total_bonos'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
-      // --- ¡WIDGET AÑADIDO PARA LA UF! ---
       ListTile(
         leading: const Icon(Icons.analytics_outlined, color: Colors.deepPurple),
         title: const Text('Valor UF (usado en cálculo)'),
         trailing: Text('\$${numberFormatter.format(result['valor_uf_usado'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
-      // --- FIN DEL WIDGET AÑADIDO ---
       const Divider(),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
