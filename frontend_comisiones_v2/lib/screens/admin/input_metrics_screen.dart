@@ -9,8 +9,9 @@ class InputMetricsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 1. Observamos la lista de usuarios (que ya está filtrada por rol)
+    // 1. Observamos AMBOS providers
     final asyncUsers = ref.watch(userListProvider);
+    final asyncMetrics = ref.watch(currentMetricsProvider); 
 
     return Scaffold(
       appBar: AppBar(
@@ -26,44 +27,71 @@ class InputMetricsScreen extends ConsumerWidget {
             end: Alignment.bottomRight,
           ),
         ),
-        child: asyncUsers.when(
+        // --- 2. Anida los .when() ---
+        child: asyncMetrics.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, stack) => Center(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text('Error al cargar usuarios: $err'),
+              child: Text('Error al cargar métricas: $err'),
             ),
           ),
-          data: (users) {
-            // 2. Filtramos solo los ejecutivos (un admin/supervisor no se ingresa métricas a sí mismo)
-            final ejecutivos = users.where((u) => u.rol == 'ejecutivo').toList();
-
-            if (ejecutivos.isEmpty) {
-              return const Center(child: Text('No se encontraron ejecutivos.'));
-            }
-            
-            // 3. Mostramos la lista centrada (como en las otras pantallas)
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
+          data: (metrics) {
+            // Ahora que tenemos métricas, cargamos usuarios
+            return asyncUsers.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Card(
-                    elevation: 5,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    clipBehavior: Clip.antiAlias,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(top: 8, bottom: 8),
-                      itemCount: ejecutivos.length,
-                      itemBuilder: (context, index) {
-                        final user = ejecutivos[index];
-                        // 4. Usamos un Card reutilizable
-                        return MetricaUserCard(user: user);
-                      },
-                    ),
-                  ),
+                  child: Text('Error al cargar usuarios: $err'),
                 ),
               ),
+              data: (users) {
+                // 3. Filtramos solo los ejecutivos
+                final ejecutivos = users.where((u) => u.rol == 'ejecutivo').toList();
+
+                if (ejecutivos.isEmpty) {
+                  return const Center(child: Text('No se encontraron ejecutivos.'));
+                }
+                
+                // 4. Mostramos la lista centrada
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 800),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Card(
+                        elevation: 5,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        clipBehavior: Clip.antiAlias,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.only(top: 8, bottom: 8),
+                          itemCount: ejecutivos.length,
+                          itemBuilder: (context, index) {
+                            final user = ejecutivos[index];
+                            
+                            // --- 5. Busca la métrica guardada ---
+                            AdminMetrica? currentTasa;
+                            try {
+                              currentTasa = metrics.firstWhere(
+                                (m) => m.usuarioId == user.id && m.nombreMetrica == 'tasa_recaudacion'
+                              );
+                            } catch (e) {
+                              currentTasa = null; // No la tiene
+                            }
+                            
+                            // --- 6. Pásala al Card ---
+                            return MetricaUserCard(
+                              user: user,
+                              currentTasa: currentTasa, 
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             );
           },
         ),
@@ -75,7 +103,13 @@ class InputMetricsScreen extends ConsumerWidget {
 // --- Widget para la tarjeta de cada Ejecutivo ---
 class MetricaUserCard extends ConsumerStatefulWidget {
   final AdminUser user;
-  const MetricaUserCard({super.key, required this.user});
+  final AdminMetrica? currentTasa; // <-- 1. Aceptar valor
+  
+  const MetricaUserCard({
+    super.key, 
+    required this.user, 
+    this.currentTasa, // <-- 2. Añadir al constructor
+  });
 
   @override
   ConsumerState<MetricaUserCard> createState() => _MetricaUserCardState();
@@ -83,7 +117,17 @@ class MetricaUserCard extends ConsumerStatefulWidget {
 
 class _MetricaUserCardState extends ConsumerState<MetricaUserCard> {
   final _tasaController = TextEditingController();
-  // (Aquí podrías añadir más controladores para otras métricas, ej: _diasTrabajadosController)
+  // (Aquí podrías añadir más controladores para otras métricas)
+
+  // --- 3. Añadir initState ---
+  @override
+  void initState() {
+    super.initState();
+    // Mostramos el valor guardado (con 1 decimal)
+    if (widget.currentTasa != null) {
+      _tasaController.text = widget.currentTasa!.valor.toStringAsFixed(1);
+    }
+  }
 
   Future<void> _onSave() async {
     final apiClient = ref.read(adminApiClientProvider);
@@ -115,7 +159,8 @@ class _MetricaUserCardState extends ConsumerState<MetricaUserCard> {
       };
       await apiClient.saveMetrica(data);
       
-      // (Opcional: aquí podrías guardar otras métricas si tuvieras más campos)
+      // --- 5. Invalidar el provider para refrescar los datos ---
+      ref.invalidate(currentMetricsProvider); 
 
       scaffoldMessenger.showSnackBar(
          SnackBar(content: Text('Tasa guardada para ${widget.user.nombreCompleto}'), backgroundColor: Colors.green),
@@ -126,8 +171,7 @@ class _MetricaUserCardState extends ConsumerState<MetricaUserCard> {
          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
       );
     } finally {
-      // 5. Quitar estado de "cargando"
-      // Usamos un post-frame callback para evitar errores de 'setState' durante el build
+      // 6. Quitar estado de "cargando"
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           ref.read(metricSaveLoadingProvider.notifier).state = false;

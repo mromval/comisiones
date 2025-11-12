@@ -5,8 +5,9 @@ import 'package:frontend_comisiones_v2/models/admin_data_models.dart';
 import 'package:frontend_comisiones_v2/providers/admin_provider.dart';
 import 'package:frontend_comisiones_v2/screens/admin/create_concurso_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/edit_tramos_screen.dart';
-import 'package:frontend_comisiones_v2/screens/admin/edit_generic_rule_screen.dart'; // (Aún no la usamos)
+import 'package:frontend_comisiones_v2/screens/admin/edit_generic_rule_screen.dart';
 
+// Lo convertimos a StatefulWidget para poder usar el TabController
 class ManageConcursosScreen extends ConsumerStatefulWidget {
   const ManageConcursosScreen({super.key});
 
@@ -22,7 +23,7 @@ class _ManageConcursosScreenState extends ConsumerState<ManageConcursosScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this); 
+    _tabController = TabController(length: 2, vsync: this); // Dos pestañas
   }
 
   @override
@@ -51,8 +52,10 @@ class _ManageConcursosScreenState extends ConsumerState<ManageConcursosScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
+        children: [
+          // Pestaña 1: Concursos Activos
           _ConcursoListView(isActive: true),
+          // Pestaña 2: Concursos Inactivos
           _ConcursoListView(isActive: false),
         ],
       ),
@@ -74,17 +77,29 @@ class _ManageConcursosScreenState extends ConsumerState<ManageConcursosScreen>
   }
 }
 
-// --- Widget reutilizable para mostrar la lista filtrada ---
-class _ConcursoListView extends ConsumerWidget {
+// --- ¡MODIFICADO A STATEFUL! ---
+class _ConcursoListView extends ConsumerStatefulWidget {
   final bool isActive;
   const _ConcursoListView({required this.isActive});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ConcursoListView> createState() => _ConcursoListViewState();
+}
+
+class _ConcursoListViewState extends ConsumerState<_ConcursoListView> {
+  
+  // Estado para guardar el perfil seleccionado
+  String? _selectedProfileName;
+
+  @override
+  Widget build(BuildContext context) {
+    // Observamos ambos providers
     final asyncConcursos = ref.watch(concursoListProvider);
+    final asyncProfiles = ref.watch(profileListProvider);
 
     return RefreshIndicator(
       onRefresh: () async {
+        ref.invalidate(profileListProvider); // Refresca perfiles también
         return ref.refresh(concursoListProvider.future);
       },
       child: Container(
@@ -95,43 +110,97 @@ class _ConcursoListView extends ConsumerWidget {
             end: Alignment.bottomRight,
           ),
         ),
-        child: asyncConcursos.when(
+        // Anidamos los .when() para tener ambas listas
+        child: asyncProfiles.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (err, stack) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Text('Error al cargar concursos: $err'),
-            ),
-          ),
-          data: (concursos) {
-            final filteredList = concursos
-                .where((c) => c.estaActiva == isActive)
-                .toList();
-
-            if (filteredList.isEmpty) {
-              return Center(child: Text('No se encontraron concursos ${isActive ? "activos" : "inactivos"}.'));
-            }
-            
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
+          error: (e,s) => Center(child: Text('Error al cargar perfiles: $e')),
+          data: (perfiles) {
+            return asyncConcursos.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Card(
-                    elevation: 5,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    clipBehavior: Clip.antiAlias,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.only(top: 8, bottom: 8),
-                      itemCount: filteredList.length,
-                      itemBuilder: (context, index) {
-                        final concurso = filteredList[index];
-                        return ConcursoListCard(concurso: concurso);
-                      },
-                    ),
-                  ),
+                  child: Text('Error al cargar concursos: $err'),
                 ),
               ),
+              data: (concursos) {
+                
+                // --- Lógica de filtrado combinada ---
+                final filteredByStatus = concursos
+                    .where((c) => c.estaActiva == widget.isActive)
+                    .toList();
+                    
+                final filteredList = _selectedProfileName == null
+                    ? filteredByStatus
+                    : filteredByStatus
+                        .where((c) => c.nombrePerfil == _selectedProfileName)
+                        .toList();
+
+                if (filteredList.isEmpty && _selectedProfileName == null) {
+                  return Center(child: Text('No se encontraron concursos ${widget.isActive ? "activos" : "inactivos"}.'));
+                }
+                
+                // --- Envolvemos la lista en un Column CON el Dropdown ---
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: DropdownButtonFormField<String?>(
+                        value: _selectedProfileName,
+                        hint: const Text('Filtrar por Perfil...'),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Mostrar Todos los Perfiles'),
+                          ),
+                          ...perfiles.map((p) => DropdownMenuItem<String?>(
+                            value: p.nombrePerfil,
+                            child: Text(p.nombrePerfil),
+                          )),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedProfileName = value;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                    ),
+                    
+                    // --- La lista ahora va en un Expanded ---
+                    Expanded(
+                      child: (filteredList.isEmpty)
+                        ? const Center(child: Text('No se encontraron concursos para este filtro.'))
+                        : Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 800),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), // Padding ajustado
+                                child: Card(
+                                  elevation: 5,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: ListView.builder(
+                                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                                    itemCount: filteredList.length,
+                                    itemBuilder: (context, index) {
+                                      final concurso = filteredList[index];
+                                      return ConcursoListCard(concurso: concurso);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -141,7 +210,7 @@ class _ConcursoListView extends ConsumerWidget {
 }
 
 
-// --- ¡TARJETA CORREGIDA! ---
+// --- Tarjeta de Concurso (CON LA NAVEGACIÓN MODIFICADA) ---
 class ConcursoListCard extends ConsumerWidget {
   const ConcursoListCard({super.key, required this.concurso});
   final AdminConcurso concurso;
@@ -159,7 +228,6 @@ class ConcursoListCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final periodo = '${_formatDate(concurso.periodoInicio)} - ${_formatDate(concurso.periodoFin)}';
     
-    // --- ¡INICIO DE LA CORRECCIÓN! ---
     // Lista de todas las claves que usan el mantenedor de Tramos
     const tramosKeys = [
       'TRAMO_P1',
@@ -175,15 +243,14 @@ class ConcursoListCard extends ConsumerWidget {
 
     // Determina si esta clave lógica usa el EditTramosScreen
     final bool usaTramosScreen = tramosKeys.contains(concurso.claveLogica);
-    // --- FIN DE LA CORRECCIÓN ---
-
+    
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
+        // --- ¡LÓGICA DE NAVEGACIÓN CORREGIDA! ---
         onTap: () {
-          // --- ¡LÓGICA DE NAVEGACIÓN CORREGIDA! ---
           if (usaTramosScreen) {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -193,13 +260,18 @@ class ConcursoListCard extends ConsumerWidget {
               ),
             );
           } else {
-             // (Aquí irían otras lógicas futuras)
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('El mantenedor para "${concurso.nombreComponente}" (clave: ${concurso.claveLogica}) no está implementado aún.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
+             // (Aquí irían otras lógicas futuras, ej: EditGenericRuleScreen)
+             Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => EditGenericRuleScreen(concurso: concurso),
+                ),
+              );
+            // ScaffoldMessenger.of(context).showSnackBar(
+            //   SnackBar(
+            //     content: Text('El mantenedor para "${concurso.nombreComponente}" (clave: ${concurso.claveLogica}) no está implementado aún.'),
+            //     backgroundColor: Colors.orange,
+            //   ),
+            // );
           }
         },
         // --- FIN DE LA CORRECCIÓN ---
@@ -230,8 +302,6 @@ class ConcursoListCard extends ConsumerWidget {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Actualizando estado...'), duration: Duration(seconds: 1)),
                       );
-                      // --- ¡SWITCH CORREGIDO! ---
-                      // El provider (que ya corregimos) maneja el bool
                       ref.read(concursoListProvider.notifier).updateConcurso(
                         concurso.id,
                         {'esta_activa': nuevoValor},

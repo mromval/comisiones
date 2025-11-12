@@ -17,8 +17,7 @@ import '../models/admin_data_models.dart';
 final calculationResultProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
 final calculationLoadingProvider = StateProvider<bool>((ref) => false);
 
-// --- ¡NUEVO! Provider para cargar TODOS los datos de la UI ---
-// Carga la configuración (para fechas) y los concursos (para rankings)
+// --- Provider de Datos de UI (sin cambios) ---
 final homeScreenDataProvider = FutureProvider((ref) async {
   // Observamos los providers que necesitamos
   final configData = await ref.watch(configListProvider.future);
@@ -74,7 +73,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final numberFormatter = NumberFormat.decimalPattern('es_CL');
   Timer? _debounce;
 
-  // --- Lógica de Cálculo (Ahora envía el mapa de rankings) ---
+  // --- Lógica de Cálculo (sin cambios) ---
   void _triggerCalculation() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
@@ -101,7 +100,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       'uf_pyme_m': safeParseDouble(_ufPymeMandatoController.text),
       'ref_p1': safeParseInt(_refP1Controller.text),
       'ref_p2': safeParseInt(_refP2Controller.text),
-      'sim_rankings': _selectedRankingPos, // <-- ¡Envía el mapa completo!
+      'sim_rankings': _selectedRankingPos, 
     });
 
     try {
@@ -135,6 +134,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  // --- (initState y dispose sin cambios) ---
   @override
   void initState() {
     super.initState();
@@ -151,9 +151,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Carga los datos de config y concursos
       ref.read(homeScreenDataProvider.future); 
-      // Lanza el primer cálculo
       if (mounted) {
         _calculateCommissions();
       }
@@ -169,12 +167,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     super.dispose();
   }
+  // --- (Fin de initState/dispose) ---
 
   @override
   Widget build(BuildContext context) {
     final result = ref.watch(calculationResultProvider);
     final uiDataAsync = ref.watch(homeScreenDataProvider);
-    final sueldoBase = result?['sueldo_base'] ?? 0;
+    
+    // --- ¡CAMBIO! Leemos el sueldo base aquí ---
+    // (Si el resultado es nulo, usamos 0 como placeholder)
+    final sueldoBase = (result?['sueldo_base'] as num?) ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -184,7 +186,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.print),
-            onPressed: () => _printScreen(result, uiDataAsync.valueOrNull?['dates'] ?? {}),
+            onPressed: () => _printScreen(result, (uiDataAsync.valueOrNull?['dates'] as Map<String, String>?) ?? {}),
             tooltip: 'Imprimir / Guardar PDF',
           ),
           IconButton(
@@ -202,51 +204,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             end: Alignment.bottomRight,
           ),
         ),
-        // --- ¡NUEVO DISEÑO: UNA SOLA COLUMNA! ---
+        
+        // --- ¡CAMBIO DE LAYOUT! (ListView -> SingleChildScrollView) ---
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1200), // Ancho total para PC
-            child: ListView( // Todo es scrolleable
+            constraints: const BoxConstraints(maxWidth: 1200), // Ancho total
+            
+            // Usamos SingleChildScrollView para que todo quepa en una vista
+            // pero permita scroll si la pantalla es muy pequeña.
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
-              children: [
-                // 1. Tarjeta de Renta Final (arriba)
-                _buildResultDisplay(result),
-                const SizedBox(height: 24),
-                
-                // 2. Fila con las dos columnas (Inputs y Ranking)
-                uiDataAsync.when(
-                  loading: () => const Center(child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: CircularProgressIndicator(),
-                  )),
-                  error: (e, s) => Center(child: Text('Error al cargar datos: $e')),
-                  data: (data) {
-                    final dates = data['dates'] as Map<String, String>;
-                    final rankingConcursos = data['rankingConcursos'] as List<AdminConcurso>;
-                    
-                    return Row( // La fila principal que pediste
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Columna Izquierda: Inputs
-                        Expanded(
-                          flex: 2, 
-                          child: _buildInputsCard(dates),
-                        ),
-                        const SizedBox(width: 24),
-                        // Columna Derecha: Ranking
-                        Expanded(
-                          flex: 3, 
-                          child: _buildRankingCard(result, rankingConcursos),
-                        ),
-                      ],
-                    );
-                  }
-                ),
-                const SizedBox(height: 24),
+              child: Column( // El ListView ahora es un Column
+                children: [
+                  // 1. Fila con las dos columnas (Inputs y Ranking)
+                  uiDataAsync.when(
+                    loading: () => const Center(child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: CircularProgressIndicator(),
+                    )),
+                    error: (e, s) => Center(child: Text('Error al cargar datos: $e')),
+                    data: (data) {
+                      final dates = data['dates'] as Map<String, String>;
+                      final rankingConcursos = data['rankingConcursos'] as List<AdminConcurso>;
+                      
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Columna Izquierda: Inputs
+                          Expanded(
+                            flex: 2, 
+                            child: _buildInputsCard(dates),
+                          ),
+                          const SizedBox(width: 24),
+                          // Columna Derecha: Ranking
+                          Expanded(
+                            flex: 3, 
+                            child: _buildRankingCard(result, rankingConcursos),
+                          ),
+                        ],
+                      );
+                    }
+                  ),
+                  const SizedBox(height: 24),
 
-                // 3. Tarjeta de Sueldo Base (abajo)
-                _buildSueldoBaseDisplay(sueldoBase),
-              ],
+                  // 2. Tarjeta de Renta Final (Ahora va abajo)
+                  //    Le pasamos el sueldo base que calculamos arriba
+                  _buildResultDisplay(result, sueldoBase),
+                  
+                  // --- ¡TARJETA DE BONO BASE ELIMINADA DE AQUÍ! ---
+                ],
+              ),
             ),
           ),
         ),
@@ -254,7 +261,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- WIDGET PARA LA TARJETA DE INPUTS (Columna Izquierda) ---
+  // --- (Widget _buildInputsCard sin cambios) ---
   Widget _buildInputsCard(Map<String, String> dates) {
     return Card(
       elevation: 4,
@@ -266,7 +273,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             Text('Concursos', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.deepPurple.shade800, fontSize: 22)),
             
-            // --- ¡NUEVO! Títulos de Fechas (como en tu boceto) ---
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Text(
@@ -298,9 +304,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- WIDGET PARA LA TARJETA DE RANKING (Columna Derecha) ---
+  // --- (Widget _buildRankingCard sin cambios) ---
   Widget _buildRankingCard(Map<String, dynamic>? result, List<AdminConcurso> rankingConcursos) {
-    // Sacamos las métricas del resultado para la validación
     final Map<String, dynamic> metricas = result?['debug_metricas_usadas'] ?? {};
     
     return Card(
@@ -316,7 +321,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             if (rankingConcursos.isEmpty)
               const Text('No hay concursos de ranking activos este mes.'),
             ...rankingConcursos.map((concurso) {
-              // ¡Validación! Verificamos si cumple los requisitos
               final String? motivoFallo = _checkRequisitos(concurso, metricas);
               final bool habilitado = (motivoFallo == null);
 
@@ -328,15 +332,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- WIDGET PARA CADA GRUPO DE RANKING (Seguros, PYME, Isapre) ---
+  // --- (Widget _buildRankingGroup sin cambios) ---
   Widget _buildRankingGroup(AdminConcurso concurso, bool habilitado, String? motivoFallo) {
-    // Usamos un Consumer para cargar los tramos (premios) de este concurso
     return Consumer(
       builder: (context, widgetRef, child) {
         final asyncTramos = widgetRef.watch(tramoListProvider(concurso.id));
         
         return Opacity(
-          opacity: habilitado ? 1.0 : 0.5, // Se ve "apagado" si está deshabilitado
+          opacity: habilitado ? 1.0 : 0.5,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -353,7 +356,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 loading: () => const SizedBox(height: 50, child: Center(child: CircularProgressIndicator())),
                 error: (e,s) => Text('Error al cargar premios: $e'),
                 data: (tramos) {
-                  // Creamos los RadioListTiles
                   final radios = tramos.map((tramo) {
                     String label = '${tramo.tramoDesdeUf.toInt()}°';
                     if (tramo.tramoHastaUf.toInt() != tramo.tramoDesdeUf.toInt()) {
@@ -366,27 +368,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     final int posValue = tramo.tramoDesdeUf.toInt();
 
                     return RadioListTile<int>(
-                      title: Text(label, style: const TextStyle(fontSize: 13)), // Letra más chica
+                      title: Text(label, style: const TextStyle(fontSize: 13)),
                       value: posValue,
                       groupValue: _selectedRankingPos[concurso.claveLogica],
-                      // --- ¡BUG DE RANKING CORREGIDO! ---
                       onChanged: habilitado ? (int? value) {
                         setState(() {
-                          // Ahora SÍ permite seleccionar uno de CADA grupo
                           if (value != null) {
                             _selectedRankingPos[concurso.claveLogica] = value;
                           }
                         });
-                        _triggerCalculation(); // Recalcular
+                        _triggerCalculation();
                       } : null,
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                     );
                   }).toList();
                   
-                  // Añadimos la opción "Ninguno"
                   radios.insert(0, RadioListTile<int>(
-                    title: const Text('Ninguno', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13)), // Letra más chica
+                    title: const Text('Ninguno', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13)),
                     value: 0, 
                     groupValue: _selectedRankingPos.containsKey(concurso.claveLogica) ? -1 : 0, 
                     onChanged: habilitado ? (int? value) {
@@ -410,7 +409,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- Lógica de Validación (copiada del backend, para la UI) ---
+  // --- (Widget _checkRequisitos sin cambios) ---
   String? _checkRequisitos(AdminConcurso regla, Map<String, dynamic> metricas) {
     final minUf = regla.requisitoMinUfTotal;
     final minTasa = regla.requisitoTasaRecaudacion;
@@ -440,11 +439,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return 'Mínimo $minContratos Contratos';
     }
     
-    return null; // ¡Pasa todos los requisitos!
+    return null;
   }
 
-  // --- WIDGET PARA LA TARJETA DE RESULTADOS (Arriba) ---
-  Widget _buildResultDisplay(Map<String, dynamic>? result) {
+  // --- WIDGET PARA LA TARJETA DE RESULTADOS (MODIFICADO) ---
+  Widget _buildResultDisplay(Map<String, dynamic>? result, num sueldoBase) {
     final isLoading = ref.watch(calculationLoadingProvider);
     
     return Card(
@@ -462,7 +461,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: CircularProgressIndicator(),
               ))
             else if (result != null)
-              ..._buildResultDetails(result) // Mostramos los detalles
+              // --- ¡CAMBIO! Pasamos el sueldo base a los detalles ---
+              ..._buildResultDetails(result, sueldoBase)
             else
               Text(
                 'Ingresa tus ventas para simular tu renta.',
@@ -477,40 +477,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
   
-  // --- WIDGET PARA EL SUELDO BASE (Abajo) ---
-  Widget _buildSueldoBaseDisplay(num sueldoBase) {
-     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListTile(
-          leading: Icon(Icons.archive, color: Colors.deepPurple.shade400, size: 28),
-          title: const Text('Bono Base (Sueldo Mínimo)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), // Letra más chica
-          trailing: Text('\$${numberFormatter.format(sueldoBase)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), // Letra más chica
-        ),
-      ),
-    );
-  }
+  // --- ¡WIDGET ELIMINADO! ---
+  // Ya no necesitamos _buildSueldoBaseDisplay
 
-  // --- Helper para construir los inputs ---
+  // --- (Helpers _buildTextField y _buildSectionTitle sin cambios) ---
   Widget _buildTextField(TextEditingController controller, String label, {bool isDecimal = true}) {
     return TextFormField(
       controller: controller,
       decoration: InputDecoration(
-        // --- ¡CAMBIO A "UF$"! ---
         prefixText: label.startsWith('UF') ? 'UF ' : (label.startsWith('N°') ? 'N° ' : null),
-        prefixStyle: TextStyle(color: Colors.deepPurple.shade700, fontWeight: FontWeight.bold, fontSize: 14), // Letra más chica
+        prefixStyle: TextStyle(color: Colors.deepPurple.shade700, fontWeight: FontWeight.bold, fontSize: 14),
         labelText: label,
-        labelStyle: const TextStyle(fontSize: 14), // Letra más chica
+        labelStyle: const TextStyle(fontSize: 14),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Más compacto
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
       keyboardType: isDecimal 
           ? const TextInputType.numberWithOptions(decimal: true) 
           : TextInputType.number,
-      style: const TextStyle(fontSize: 14), // Letra más chica
+      style: const TextStyle(fontSize: 14),
     );
   }
   
@@ -522,14 +507,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         style: Theme.of(context).textTheme.titleLarge?.copyWith(
           color: Colors.deepPurple.shade700,
           fontWeight: FontWeight.bold,
-          fontSize: 16 // Letra más chica
+          fontSize: 16
         ),
       ),
     );
   }
+  // --- (Fin de Helpers) ---
 
-  // --- Helper de Desglose (con formato) ---
-  List<Widget> _buildResultDetails(Map<String, dynamic> result) {
+
+  // --- Helper de Desglose (MODIFICADO) ---
+  List<Widget> _buildResultDetails(Map<String, dynamic> result, num sueldoBase) {
     
     final bool isLoading = ref.watch(calculationLoadingProvider);
     
@@ -538,7 +525,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         'Tu Renta Final Simulado:',
         style: Theme.of(context).textTheme.titleLarge?.copyWith(
           color: Colors.deepPurple.shade800,
-          fontSize: 18 // Letra más chica
+          fontSize: 18
         ),
         textAlign: TextAlign.center,
       ),
@@ -550,7 +537,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.green.shade700,
                   fontWeight: FontWeight.bold,
-                  fontSize: 28 // Letra más chica
+                  fontSize: 28
                 ),
             textAlign: TextAlign.center,
           ),
@@ -565,13 +552,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // --- Resumen ---
       ListTile(
         title: const Text('Total Bonos'),
-        trailing: Text('\$${numberFormatter.format(result['total_bonos'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), // Letra más chica
+        trailing: Text('\$${numberFormatter.format(result['total_bonos'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         dense: true,
         visualDensity: VisualDensity.compact,
       ),
+      // --- ¡AÑADIDO! Sueldo Base ---
+      ListTile(
+        title: const Text('Sueldo Base'), // <-- Texto cambiado
+        trailing: Text('\$${numberFormatter.format(sueldoBase)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        dense: true,
+        visualDensity: VisualDensity.compact,
+      ),
+      // --- FIN DE AÑADIDO ---
       ListTile(
         title: const Text('Valor UF (usado en cálculo)'),
-        trailing: Text('\$${numberFormatter.format(result['valor_uf_usado'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), // Letra más chica
+        trailing: Text('\$${numberFormatter.format(result['valor_uf_usado'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         dense: true,
         visualDensity: VisualDensity.compact,
       ),
@@ -580,18 +575,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         child: Text(
           'Desglose del Cálculo:',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.deepPurple.shade700, fontSize: 15), // Letra más chica
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.deepPurple.shade700, fontSize: 15),
         ),
       ),
     ];
 
-    // --- Desglose ---
+    // --- Desglose (sin cambios) ---
     if (result['desglose'] is List) {
       if ((result['desglose'] as List).isEmpty) {
          widgets.add(
             const Padding(
               padding: EdgeInsets.only(left: 16.0, right: 16.0, bottom: 4.0),
-              child: Text('- No se generaron bonos este mes.', style: TextStyle(fontSize: 13)), // Letra más chica
+              child: Text('- No se generaron bonos este mes.', style: TextStyle(fontSize: 13)),
             ),
           );
       }
@@ -602,7 +597,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 4.0),
               child: Text(
                 '- $item',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13), // Letra más chica
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 13),
               ),
             ),
           );
@@ -612,11 +607,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return widgets;
   }
 
-  // --- ¡NUEVA FUNCIÓN DE IMPRESIÓN/PDF! ---
+  // --- (Función de Impresión/PDF sin cambios) ---
   Future<void> _printScreen(Map<String, dynamic>? result, Map<String, String> dates) async {
     final doc = pw.Document();
     
-    // Captura el estado actual de los controladores
     final inputs = {
       'Tramos P1 (${dates['p1_start']}-${dates['p1_end']})': _ufP1Controller.text,
       'Tramos P2 (${dates['p2_start']}-${dates['p2_end']})': _ufP2Controller.text,
@@ -633,7 +627,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         pageFormat: PdfPageFormat.a4,
         build: (pw.Context context) {
           
-          // --- Helper de Estilos para el PDF ---
           final pw.TextStyle h1 = pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.deepPurple800);
           final pw.TextStyle h2 = pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.deepPurple700);
           final pw.TextStyle h3 = pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.deepPurple700);
@@ -641,7 +634,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final pw.TextStyle body = const pw.TextStyle(fontSize: 12);
           final pw.TextStyle bodyBold = pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold);
 
-          // --- Contenido del PDF ---
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -649,7 +641,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               pw.Text('Fecha de Simulación: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: body.copyWith(color: PdfColors.grey600)),
               pw.Divider(height: 30),
               
-              // --- Sección de Resultados ---
               pw.Text('Renta Final Simulado:', style: h2),
               pw.Text('\$${numberFormatter.format(result?['renta_final'] ?? 0)}', style: h1Result),
               pw.SizedBox(height: 20),
@@ -669,7 +660,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ]),
               pw.Divider(height: 20),
 
-              // --- Sección de Inputs ---
               pw.Text('Valores Ingresados', style: h3),
               ...inputs.entries.map((entry) => 
                 pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -688,7 +678,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 
               pw.Divider(height: 20),
 
-              // --- Sección de Desglose ---
               pw.Text('Desglose del Cálculo:', style: h3),
               if (result?['desglose'] is List && (result!['desglose'] as List).isNotEmpty)
                 ... (result['desglose'] as List).map((item) => 
@@ -701,7 +690,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
       ),
     );
-    // Mostrar la pantalla de impresión
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => doc.save(),
     );

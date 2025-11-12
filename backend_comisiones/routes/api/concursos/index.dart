@@ -8,15 +8,19 @@ Future<Response> onRequest(RequestContext context) async {
   
   final jwtPayload = context.read<Map<String, dynamic>>();
   final rol = jwtPayload['rol'] as String;
-  if (rol != 'admin' && rol != 'supervisor') {
-    return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
-  }
 
   switch (context.request.method) {
     case HttpMethod.get:
+      // GET está permitido para todos los roles logueados (incluido ejecutivo)
       return _onGet(context);
+      
     case HttpMethod.post:
+      // POST (crear) solo para admin/supervisor
+      if (rol != 'admin' && rol != 'supervisor') {
+        return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado: Solo admin/supervisor pueden crear.');
+      }
       return _onPost(context);
+      
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
   }

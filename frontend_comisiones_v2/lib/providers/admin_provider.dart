@@ -337,6 +337,20 @@ class AdminApiClient {
   }
 
   // --- Métricas ---
+  // --- ¡NUEVA FUNCIÓN! (Para Leer Métricas) ---
+  Future<List<AdminMetrica>> getMetrics() async {
+    final response = await http.get(
+      Uri.parse('$_apiUrl/api/metricas'),
+      headers: {'Authorization': 'Bearer $_token'},
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> jsonData = jsonDecode(response.body);
+      return jsonData.map((json) => AdminMetrica.fromJson(json)).toList();
+    } else {
+      throw Exception('Error al cargar métricas');
+    }
+  }
+  
   Future<void> saveMetrica(Map<String, dynamic> data) async {
     final response = await http.post(
       Uri.parse('$_apiUrl/api/metricas'),
@@ -367,6 +381,12 @@ final adminApiClientProvider = Provider<AdminApiClient>((ref) {
 final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
   final apiClient = ref.watch(adminApiClientProvider);
   return apiClient.getComponentes();
+});
+
+// --- ¡NUEVO PROVIDER! ---
+final currentMetricsProvider = FutureProvider<List<AdminMetrica>>((ref) {
+  final apiClient = ref.watch(adminApiClientProvider);
+  return apiClient.getMetrics();
 });
 
 // --- Providers de Notificadores (CRUD Completo) ---

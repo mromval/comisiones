@@ -5,15 +5,21 @@ import 'package:mysql_client/mysql_client.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   
-  // 1. Verificamos el ROL (admin/supervisor pueden ver)
-  final jwtPayload = context.read<Map<String, dynamic>>();
-  final rol = jwtPayload['rol'] as String;
-  if (rol != 'admin' && rol != 'supervisor') {
-    return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
-  }
+  // 1. Verificamos el ROL (¡MODIFICADO!)
+  // El middleware de /api/ ya valida que esté logueado.
+  // Todos los logueados (incluido ejecutivo) pueden LEER (GET).
+  // Solo admin/supervisor pueden escribir (se valida en el [llave].dart)
 
   // 2. Solo método GET
   if (context.request.method != HttpMethod.get) {
+    
+    // Si no es GET, verificamos permisos de escritura
+    final jwtPayload = context.read<Map<String, dynamic>>();
+    final rol = jwtPayload['rol'] as String;
+    if (rol != 'admin' && rol != 'supervisor') {
+      return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
+    }
+    // Si es admin/supervisor, pero no es GET, el método no es permitido AQUI
     return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 

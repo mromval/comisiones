@@ -184,17 +184,38 @@ class AdminComponent {
 
 class AdminConfig {
   final String llave;
-  final String? valor; // <-- ¡CAMBIO AQUÍ!
+  final String? valor; 
 
   AdminConfig({
     required this.llave,
-    this.valor, // <-- ¡CAMBIO AQUÍ!
+    this.valor, 
   });
 
   factory AdminConfig.fromJson(Map<String, dynamic> json) {
     return AdminConfig(
       llave: json['llave'] as String,
-      valor: json['valor'] as String?, // <-- ¡CAMBIO AQUÍ!
+      valor: json['valor'] as String?, 
+    );
+  }
+}
+
+// --- ¡NUEVO MODELO AÑADIDO! ---
+class AdminMetrica {
+  final int usuarioId;
+  final String nombreMetrica;
+  final double valor;
+
+  AdminMetrica({
+    required this.usuarioId,
+    required this.nombreMetrica,
+    required this.valor,
+  });
+
+  factory AdminMetrica.fromJson(Map<String, dynamic> json) {
+    return AdminMetrica(
+      usuarioId: int.parse(json['usuario_id'].toString()),
+      nombreMetrica: json['nombre_metrica'] as String,
+      valor: double.parse(json['valor'].toString()),
     );
   }
 }

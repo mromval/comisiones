@@ -57,6 +57,7 @@ class AuthWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
 
+    // --- ¡ESTE ES EL SWITCH MODIFICADO! ---
     return switch (authState) {
       
       Authenticated(usuario: final usuario) => 
@@ -64,21 +65,11 @@ class AuthWrapper extends ConsumerWidget {
           ? const AdminDashboardScreen() 
           : const HomeScreen(),
 
+      // Mantenemos la LoginScreen viva durante Carga y Error
+      // para que pueda mostrar sus propios indicadores.
       Unauthenticated() => const LoginScreen(),
       AuthError() => const LoginScreen(), 
-      
-      // 4. ¡CAMBIO IMPORTANTE!
-      // Si está cargando (revisando SharedPreferences),
-      // mostramos un spinner genérico, NO el splash de nuevo.
-      AuthLoading() => const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        ),
+      AuthLoading() => const LoginScreen(),
     };
   }
 }
-
-// 5. ¡ELIMINADO!
-// Borramos la clase 'SplashScreen' placeholder que estaba aquí
-// para evitar la confusión.

@@ -9,18 +9,22 @@ Future<Response> onRequest(RequestContext context, String id) async {
   
   final jwtPayload = context.read<Map<String, dynamic>>();
   final rol = jwtPayload['rol'] as String;
-  if (rol != 'admin' && rol != 'supervisor') {
-    return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
-  }
-
+  
   // Usamos el ID del concurso para todas las operaciones
   final concursoId = int.parse(id);
   
   switch (context.request.method) {
     case HttpMethod.get:
+      // GET (Leer tramos) está permitido para todos los roles logueados
       return _onGet(context, concursoId);
+      
     case HttpMethod.post:
+      // POST (Crear tramo) solo para admin/supervisor
+      if (rol != 'admin' && rol != 'supervisor') {
+        return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
+      }
       return _onPost(context, concursoId);
+      
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
   }
