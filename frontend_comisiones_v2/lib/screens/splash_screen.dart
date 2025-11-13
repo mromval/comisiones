@@ -15,7 +15,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicia un temporizador de 3 segundos
+    // Inicia un temporizador de 10 segundos
     Timer(const Duration(seconds: 10), () {
       // Cuando el tiempo se acaba, reemplaza esta pantalla
       // por el AuthWrapper
@@ -51,14 +51,6 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               const SizedBox(height: 40),
 
-              // Tu Logo CasaIoT
-              // Asegúrate de que la ruta 'assets/logo_casaiot.png' sea correcta
-              Image.asset(
-                'assets/logo_casaiot.png',
-                height: 220, // Ajusta el tamaño como prefieras
-              ),
-              const SizedBox(height: 24),
-              
               // Glosa
               Text(
                 'Creado orgullosamente en Chile 🇨🇱 por',
@@ -69,13 +61,22 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'www.casaiot.cl',
+                'www.fabricamostuidea.cl',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: Colors.deepPurple.shade700,
                 ),
               ),
+
+              // Tu Logo CasaIoT
+              // Asegúrate de que la ruta 'assets/logo_casaiot.png' sea correcta
+              Image.asset(
+                'assets/logo_fabricamostuidea.png',
+                height: 320, // Ajusta el tamaño como prefieras
+              ),
+              const SizedBox(height: 24),
+              
 
               // --- INICIO DE LA MODIFICACIÓN ---
               const SizedBox(height: 8),
