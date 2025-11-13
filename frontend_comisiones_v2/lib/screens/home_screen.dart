@@ -19,16 +19,14 @@ final calculationLoadingProvider = StateProvider<bool>((ref) => false);
 
 // --- Provider de Datos de UI (sin cambios) ---
 final homeScreenDataProvider = FutureProvider((ref) async {
-  // Observamos los providers que necesitamos
   final configData = await ref.watch(configListProvider.future);
   final concursos = await ref.watch(concursoListProvider.future);
 
-  // Procesamos las fechas
   String format(String? isoDate) {
     if (isoDate == null || isoDate.isEmpty) return '??';
     try {
       final parsedDate = DateTime.parse(isoDate);
-      return DateFormat('dd/MM').format(parsedDate);
+      return DateFormat('dd-MM-yyyy').format(parsedDate);
     } catch (e) { return '??'; }
   }
   final Map<String, String> dates = {
@@ -38,7 +36,6 @@ final homeScreenDataProvider = FutureProvider((ref) async {
     'p2_end': format(configData.firstWhere((c) => c.llave == 'FECHA_FIN_P2', orElse: () => AdminConfig(llave: '', valor: '')).valor),
   };
 
-  // Filtramos solo los concursos de ranking activos
   final rankingConcursos = concursos.where(
     (c) => c.estaActiva && c.claveLogica.startsWith('RANK_')
   ).toList();
@@ -58,7 +55,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  // Controladores para todos los inputs
+  // Controladores
   final _ufP1Controller = TextEditingController();
   final _ufP2Controller = TextEditingController();
   final _ufPymeTransferenciaController = TextEditingController();
@@ -66,14 +63,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _refP1Controller = TextEditingController();
   final _refP2Controller = TextEditingController();
   
-  // Mapa para guardar la selección de CADA grupo de ranking
   final Map<String, int> _selectedRankingPos = {};
   
   late final List<TextEditingController> _controllers;
   final numberFormatter = NumberFormat.decimalPattern('es_CL');
   Timer? _debounce;
 
-  // --- Lógica de Cálculo (sin cambios) ---
+  // --- (Lógica de Cálculo sin cambios) ---
   void _triggerCalculation() {
     if (_debounce?.isActive ?? false) _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
@@ -174,8 +170,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final result = ref.watch(calculationResultProvider);
     final uiDataAsync = ref.watch(homeScreenDataProvider);
     
-    // --- ¡CAMBIO! Leemos el sueldo base aquí ---
-    // (Si el resultado es nulo, usamos 0 como placeholder)
     final sueldoBase = (result?['sueldo_base'] as num?) ?? 0;
 
     return Scaffold(
@@ -205,53 +199,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
         
-        // --- ¡CAMBIO DE LAYOUT! (ListView -> SingleChildScrollView) ---
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1200), // Ancho total
+            constraints: const BoxConstraints(maxWidth: 1200),
             
-            // Usamos SingleChildScrollView para que todo quepa en una vista
-            // pero permita scroll si la pantalla es muy pequeña.
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
-              child: Column( // El ListView ahora es un Column
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Fila con las dos columnas (Inputs y Ranking)
-                  uiDataAsync.when(
-                    loading: () => const Center(child: Padding(
-                      padding: EdgeInsets.all(32.0),
-                      child: CircularProgressIndicator(),
-                    )),
-                    error: (e, s) => Center(child: Text('Error al cargar datos: $e')),
-                    data: (data) {
-                      final dates = data['dates'] as Map<String, String>;
-                      final rankingConcursos = data['rankingConcursos'] as List<AdminConcurso>;
-                      
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Columna Izquierda: Inputs
-                          Expanded(
-                            flex: 2, 
-                            child: _buildInputsCard(dates),
-                          ),
-                          const SizedBox(width: 24),
-                          // Columna Derecha: Ranking
-                          Expanded(
-                            flex: 3, 
-                            child: _buildRankingCard(result, rankingConcursos),
-                          ),
-                        ],
-                      );
-                    }
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 2. Tarjeta de Renta Final (Ahora va abajo)
-                  //    Le pasamos el sueldo base que calculamos arriba
-                  _buildResultDisplay(result, sueldoBase),
                   
-                  // --- ¡TARJETA DE BONO BASE ELIMINADA DE AQUÍ! ---
+                  // --- COLUMNA IZQUIERDA (Inputs + Valor UF) ---
+                  Expanded(
+                    // --- ¡MODIFICACIÓN! (Cambiado de 2 a 1) ---
+                    flex: 1, 
+                    child: Column(
+                      children: [
+                        uiDataAsync.when(
+                          loading: () => const Center(child: Padding(
+                            padding: EdgeInsets.all(32.0),
+                            child: CircularProgressIndicator(),
+                          )),
+                          error: (e, s) => Center(child: Text('Error al cargar datos: $e')),
+                          data: (data) {
+                            final dates = data['dates'] as Map<String, String>;
+                            return _buildInputsCard(dates); 
+                          }
+                        ),
+                        const SizedBox(height: 24),
+                        _buildValorUfDisplay(result),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(width: 24),
+
+                  // --- COLUMNA DERECHA (Resultados y Ranking) ---
+                  Expanded(
+                    // --- ¡MODIFICACIÓN! (Cambiado de 3 a 2) ---
+                    flex: 2, 
+                    child: Column( 
+                      children: [
+                        _buildResultDisplay(result, sueldoBase),
+                        const SizedBox(height: 24),
+                        uiDataAsync.when(
+                          loading: () => const Center(child: Padding(
+                            padding: EdgeInsets.all(32.0),
+                            child: CircularProgressIndicator(),
+                          )),
+                          error: (e, s) => Center(child: Text('Error al cargar datos: $e')),
+                          data: (data) {
+                            final rankingConcursos = data['rankingConcursos'] as List<AdminConcurso>;
+                            return _buildRankingCard(result, rankingConcursos);
+                          }
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -261,7 +265,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- (Widget _buildInputsCard sin cambios) ---
+  // --- WIDGET PARA LA TARJETA DE INPUTS (Columna Izquierda) ---
   Widget _buildInputsCard(Map<String, String> dates) {
     return Card(
       elevation: 4,
@@ -271,24 +275,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Concursos', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.deepPurple.shade800, fontSize: 22)),
-            
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                'Período 1: ${dates['p1_start']} al ${dates['p1_end']}  |  Período 2: ${dates['p2_start']} al ${dates['p2_end']}',
-                style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 13),
-              ),
+            // Fechas
+            Text(
+              'Período 1: ${dates['p1_start']} al ${dates['p1_end']}',
+              style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 15),
             ),
+            Text(
+              'Período 2: ${dates['p2_start']} al ${dates['p2_end']}',
+              style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            const SizedBox(height: 16),
+            
+            Text('Concursos', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.deepPurple.shade800, fontSize: 22)),
             const Divider(height: 24),
             
-            _buildSectionTitle(context, 'Tramos UF (Seguros)'),
+            _buildSectionTitle(context, 'Tramos UF (Venta Seguros y convenios individuales)'),
             _buildTextField(_ufP1Controller, 'Ventas Período 1'),
             const SizedBox(height: 16),
             _buildTextField(_ufP2Controller, 'Ventas Período 2'),
             
             const Divider(height: 32),
-            _buildSectionTitle(context, 'PYME'),
+            _buildSectionTitle(context, 'PYME (Convenios tipo pago primera prima)'),
             _buildTextField(_ufPymeTransferenciaController, 'UF Pago Transferencia'),
             const SizedBox(height: 16),
             _buildTextField(_ufPymeMandatoController, 'UF Pago Mandato'),
@@ -304,7 +311,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  // --- (Widget _buildRankingCard sin cambios) ---
+  // --- WIDGET PARA LA TARJETA DE RANKING (Columna Derecha) ---
   Widget _buildRankingCard(Map<String, dynamic>? result, List<AdminConcurso> rankingConcursos) {
     final Map<String, dynamic> metricas = result?['debug_metricas_usadas'] ?? {};
     
@@ -316,23 +323,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ranking', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.deepPurple.shade800, fontSize: 22)),
+            Text('Ranking (simula tu puesto)', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.deepPurple.shade800, fontSize: 22)),
             const Divider(height: 24),
+            
             if (rankingConcursos.isEmpty)
               const Text('No hay concursos de ranking activos este mes.'),
-            ...rankingConcursos.map((concurso) {
-              final String? motivoFallo = _checkRequisitos(concurso, metricas);
-              final bool habilitado = (motivoFallo == null);
+              
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ...['RANK_SEG', 'RANK_PYME', 'RANK_ISAPRE'].map((claveLogica) {
+                  
+                  AdminConcurso? concurso;
+                  try {
+                    concurso = rankingConcursos.firstWhere((c) => c.claveLogica == claveLogica);
+                  } catch (e) {
+                    concurso = null;
+                  }
 
-              return _buildRankingGroup(concurso, habilitado, motivoFallo);
-            }).toList(),
+                  if (concurso == null) {
+                    return Expanded(flex: 1, child: const SizedBox());
+                  }
+
+                  final String? motivoFallo = _checkRequisitos(concurso, metricas);
+                  final bool habilitado = (motivoFallo == null);
+
+                  return Expanded(
+                    flex: 1, // <-- Todas las columnas internas iguales
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: _buildRankingGroup(concurso, habilitado, motivoFallo),
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  // --- (Widget _buildRankingGroup sin cambios) ---
+  // --- WIDGET PARA CADA GRUPO DE RANKING (Seguros, PYME, Isapre) ---
   Widget _buildRankingGroup(AdminConcurso concurso, bool habilitado, String? motivoFallo) {
     return Consumer(
       builder: (context, widgetRef, child) {
@@ -363,7 +395,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     } else {
                       label += ' Lugar';
                     }
-                    label += ': \$${numberFormatter.format(tramo.montoPago)}';
+                    label += ': \$${numberFormatter.format(tramo.montoPago)}.-';
                     
                     final int posValue = tramo.tramoDesdeUf.toInt();
 
@@ -401,7 +433,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   return Column(children: radios);
                 },
               ),
-              const Divider(height: 24),
             ],
           ),
         );
@@ -442,7 +473,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return null;
   }
 
-  // --- WIDGET PARA LA TARJETA DE RESULTADOS (MODIFICADO) ---
+  // --- WIDGET PARA LA TARJETA DE RESULTADOS (Columna Derecha) ---
   Widget _buildResultDisplay(Map<String, dynamic>? result, num sueldoBase) {
     final isLoading = ref.watch(calculationLoadingProvider);
     
@@ -461,7 +492,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: CircularProgressIndicator(),
               ))
             else if (result != null)
-              // --- ¡CAMBIO! Pasamos el sueldo base a los detalles ---
               ..._buildResultDetails(result, sueldoBase)
             else
               Text(
@@ -476,10 +506,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
-  
-  // --- ¡WIDGET ELIMINADO! ---
-  // Ya no necesitamos _buildSueldoBaseDisplay
 
+  // --- WIDGET HELPER para Valor UF (Columna Izquierda) ---
+  Widget _buildValorUfDisplay(Map<String, dynamic>? result) {
+    if (result == null) return const SizedBox.shrink(); 
+    
+    final valorUf = (result['valor_uf_usado'] as num?) ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Text(
+        'Valor UF del Día (usado en cálculo): \$${numberFormatter.format(valorUf)}.-',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Colors.grey.shade700,
+          fontSize: 14,
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+    );
+  }
+  
   // --- (Helpers _buildTextField y _buildSectionTitle sin cambios) ---
   Widget _buildTextField(TextEditingController controller, String label, {bool isDecimal = true}) {
     return TextFormField(
@@ -515,7 +562,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // --- (Fin de Helpers) ---
 
 
-  // --- Helper de Desglose (MODIFICADO) ---
+  // --- Helper de Desglose (sin cambios) ---
   List<Widget> _buildResultDetails(Map<String, dynamic> result, num sueldoBase) {
     
     final bool isLoading = ref.watch(calculationLoadingProvider);
@@ -533,7 +580,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            '\$${numberFormatter.format(result['renta_final'] ?? 0)}',
+            '\$${numberFormatter.format(result['renta_final'] ?? 0)}.-',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.green.shade700,
                   fontWeight: FontWeight.bold,
@@ -549,27 +596,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       const SizedBox(height: 16),
       
-      // --- Resumen ---
       ListTile(
         title: const Text('Total Bonos'),
-        trailing: Text('\$${numberFormatter.format(result['total_bonos'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        trailing: Text('\$${numberFormatter.format(result['total_bonos'] ?? 0)}.-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         dense: true,
         visualDensity: VisualDensity.compact,
       ),
-      // --- ¡AÑADIDO! Sueldo Base ---
       ListTile(
-        title: const Text('Sueldo Base'), // <-- Texto cambiado
-        trailing: Text('\$${numberFormatter.format(sueldoBase)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        title: const Text('Sueldo Base'), 
+        trailing: Text('\$${numberFormatter.format(sueldoBase)}.-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         dense: true,
         visualDensity: VisualDensity.compact,
       ),
-      // --- FIN DE AÑADIDO ---
-      ListTile(
-        title: const Text('Valor UF (usado en cálculo)'),
-        trailing: Text('\$${numberFormatter.format(result['valor_uf_usado'] ?? 0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        dense: true,
-        visualDensity: VisualDensity.compact,
-      ),
+      
       const Divider(),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -580,7 +619,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     ];
 
-    // --- Desglose (sin cambios) ---
     if (result['desglose'] is List) {
       if ((result['desglose'] as List).isEmpty) {
          widgets.add(
@@ -607,7 +645,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return widgets;
   }
 
-  // --- (Función de Impresión/PDF sin cambios) ---
+  // --- Función de Impresión/PDF (sin cambios) ---
   Future<void> _printScreen(Map<String, dynamic>? result, Map<String, String> dates) async {
     final doc = pw.Document();
     
@@ -642,21 +680,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               pw.Divider(height: 30),
               
               pw.Text('Renta Final Simulado:', style: h2),
-              pw.Text('\$${numberFormatter.format(result?['renta_final'] ?? 0)}', style: h1Result),
+              pw.Text('\$${numberFormatter.format(result?['renta_final'] ?? 0)}.-', style: h1Result),
               pw.SizedBox(height: 20),
               
               pw.Text('Resumen del Cálculo', style: h3),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 pw.Text('Sueldo Base:', style: body),
-                pw.Text('\$${numberFormatter.format(result?['sueldo_base'] ?? 0)}', style: bodyBold),
+                pw.Text('\$${numberFormatter.format(result?['sueldo_base'] ?? 0)}.-', style: bodyBold),
               ]),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
                 pw.Text('Total Bonos:', style: body),
-                pw.Text('\$${numberFormatter.format(result?['total_bonos'] ?? 0)}', style: bodyBold),
+                pw.Text('\$${numberFormatter.format(result?['total_bonos'] ?? 0)}.-', style: bodyBold),
               ]),
               pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-                pw.Text('Valor UF usado:', style: body),
-                pw.Text('\$${numberFormatter.format(result?['valor_uf_usado'] ?? 0)}', style: bodyBold),
+                pw.Text('Valor UF del Día (usado en cálculo):', style: body),
+                pw.Text('\$${numberFormatter.format(result?['valor_uf_usado'] ?? 0)}.-', style: bodyBold),
               ]),
               pw.Divider(height: 20),
 
@@ -680,9 +718,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               pw.Text('Desglose del Cálculo:', style: h3),
               if (result?['desglose'] is List && (result!['desglose'] as List).isNotEmpty)
-                ... (result['desglose'] as List).map((item) => 
-                  pw.Text('- $item', style: body)
-                ).toList()
+                ... (result['desglose'] as List).map((item) {
+                  String itemText = item as String;
+                  final matches = RegExp(r'\$([\d\.]+)').allMatches(itemText);
+                  for (final m in matches.toList().reversed) {
+                    final numString = m.group(1)!.replaceAll('.', '');
+                    final numValue = int.tryParse(numString) ?? 0;
+                    final formattedNum = '\$${numberFormatter.format(numValue)}.-';
+                    itemText = itemText.replaceRange(m.start, m.end, formattedNum);
+                  }
+                  return pw.Text('- $itemText', style: body);
+                }).toList()
               else
                 pw.Text('- No se generaron bonos este mes.', style: body),
             ],

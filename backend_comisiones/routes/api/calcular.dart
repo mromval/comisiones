@@ -1,3 +1,4 @@
+// routes/api/calcular.dart
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async'; // Para Future.wait
@@ -5,8 +6,9 @@ import 'dart:math';   // Para min()
 import 'package:dart_frog/dart_frog.dart';
 import 'package:mysql_client/mysql_client.dart';
 import 'package:http/http.dart' as http; // Import para la API de UF
+import 'package:intl/intl.dart'; // Import para formatear números
 
-// --- Constantes de Claves Lógicas (Deben coincidir con tu BD) ---
+// --- Constantes de Claves Lógicas (Sin cambios) ---
 const String CLAVE_TRAMO_P1 = 'TRAMO_P1';
 const String CLAVE_TRAMO_P2 = 'TRAMO_P2';
 const String CLAVE_REF_P1 = 'REF_P1';
@@ -19,11 +21,11 @@ const String CLAVE_RANKING_ISAPRE = 'RANK_ISAPRE';
 
 Future<Response> onRequest(RequestContext context) async {
   
+  // --- (Lógica inicial de onRequest sin cambios) ---
   if (context.request.method != HttpMethod.post) {
     return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 
-  // --- 1. LEER DATOS INICIALES ---
   final config = context.read<Map<String, String>>();
   final jwtPayload = context.read<Map<String, dynamic>>();
   final usuarioId = int.parse(jwtPayload['id'] as String);
@@ -41,12 +43,9 @@ Future<Response> onRequest(RequestContext context) async {
     'uf_pyme_m': safeParseDouble(jsonBody['uf_pyme_m']),
     'ref_p1': safeParseInt(jsonBody['ref_p1']),
     'ref_p2': safeParseInt(jsonBody['ref_p2']),
-    
-    // --- ¡CAMBIO AQUÍ! Aceptamos un mapa de rankings ---
     'sim_rankings': jsonBody['sim_rankings'] as Map<String, dynamic>? ?? {},
   };
   
-  // --- TOTALIZADORES (usados para los requisitos) ---
   final double totalUfTramos = (inputs['uf_p1'] as double) + (inputs['uf_p2'] as double);
   final double totalUfPyme = (inputs['uf_pyme_t'] as double) + (inputs['uf_pyme_m'] as double);
   final double totalUfGeneral = totalUfTramos + totalUfPyme;
@@ -55,7 +54,6 @@ Future<Response> onRequest(RequestContext context) async {
   MySQLConnection? conn;
 
   try {
-    // --- 2. CONECTAR A LA BD Y OBTENER DATOS GLOBALES ---
     conn = await MySQLConnection.createConnection(
       host: config['DB_HOST']!, port: int.parse(config['DB_PORT']!),
       userName: config['DB_USER']!, password: config['DB_PASS']!,
@@ -67,6 +65,7 @@ Future<Response> onRequest(RequestContext context) async {
     final double SUELDO_BASE = valoresGlobales['sueldo_base']!;
     final double VALOR_UF = valoresGlobales['valor_uf']!;
     
+    // --- (Lógica de perfil y métricas sin cambios) ---
     final perfilRes = await conn.execute(
       'SELECT perfil_id FROM Usuarios WHERE id = :id', {'id': usuarioId},
     );
@@ -80,7 +79,6 @@ Future<Response> onRequest(RequestContext context) async {
         body: {'message': 'Tu usuario no tiene un Perfil de Comisión asignado. Contacta a un administrador.'},
       );
     }
-
     final metricasRes = await conn.execute(
       '''
       SELECT nombre_metrica, valor FROM Metricas_Mensuales_Ejecutivo
@@ -88,23 +86,25 @@ Future<Response> onRequest(RequestContext context) async {
       ''',
       {'id': usuarioId},
     );
-
     final Map<String, dynamic> metricas = {};
     for (final metrica in metricasRes.rows) {
       final data = metrica.assoc();
       metricas[data['nombre_metrica']!] = double.tryParse(data['valor'] ?? '0.0') ?? 0.0;
     }
-    
     metricas.addAll(inputs);
     metricas['total_uf_tramos'] = totalUfTramos;
     metricas['total_uf_pyme'] = totalUfPyme;
     metricas['total_uf_general'] = totalUfGeneral;
     metricas['total_contratos_ref'] = totalContratosReferidos;
     metricas['valor_uf_dia'] = VALOR_UF; 
+    // --- (Fin de lógica de perfil) ---
+
 
     // --- 3. MOTOR DE CÁLCULO ---
     double totalBonos = 0;
     final List<String> desglose = [];
+    final f = NumberFormat.decimalPattern('es_CL');
+    final fPesos = NumberFormat.currency(locale: 'es_CL', symbol: '\$', decimalDigits: 0);
 
     final reglasActivas = await conn.execute(
       '''
@@ -129,7 +129,6 @@ Future<Response> onRequest(RequestContext context) async {
       desglose.add('No se encontraron concursos activos para tu perfil este mes.');
     }
 
-    // --- ¡CAMBIO AQUÍ! Leemos el mapa de rankings ANTES del loop ---
     final simRankings = metricas['sim_rankings'] as Map<String, dynamic>;
 
     for (final row in reglasActivas.rows) {
@@ -145,57 +144,102 @@ Future<Response> onRequest(RequestContext context) async {
       }
 
       double bonoCalculado = 0;
+      String desgloseBono = ''; // Para el desglose detallado
       
       switch (clave) {
         case CLAVE_TRAMO_P1:
-          bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p1'] as double);
-          break;
+          final monto = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p1'] as double);
+          if (monto != null) {
+            bonoCalculado = monto;
+            desgloseBono = fPesos.format(bonoCalculado);
+          }
+          break; 
         case CLAVE_TRAMO_P2:
-          bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p2'] as double);
+          final monto = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p2'] as double);
+          if (monto != null) {
+            bonoCalculado = monto;
+            desgloseBono = fPesos.format(bonoCalculado);
+          }
           break;
+          
         case CLAVE_REF_P1:
-          bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, (metricas['ref_p1'] as int).toDouble());
+          final numContratos = (metricas['ref_p1'] as int).toDouble();
+          final montoUnitario = await _buscarMontoVariableEnTramos(conn, reglaId, numContratos);
+          if (montoUnitario != null) {
+            bonoCalculado = numContratos * montoUnitario; // La multiplicación se hace aquí
+            desgloseBono = '$numContratos contratos x ${fPesos.format(montoUnitario)} c/u = ${fPesos.format(bonoCalculado)}';
+          }
           break;
         case CLAVE_REF_P2:
-          bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, (metricas['ref_p2'] as int).toDouble());
+          final numContratos = (metricas['ref_p2'] as int).toDouble();
+          final montoUnitario = await _buscarMontoVariableEnTramos(conn, reglaId, numContratos);
+          if (montoUnitario != null) {
+            bonoCalculado = numContratos * montoUnitario;
+            desgloseBono = '$numContratos contratos x ${fPesos.format(montoUnitario)} c/u = ${fPesos.format(bonoCalculado)}';
+          }
           break;
+        
         case CLAVE_PYME_T:
-          bonoCalculado = await _calcularPyme(conn, reglaId, metricas['uf_pyme_t'] as double, VALOR_UF);
+          final uf = metricas['uf_pyme_t'] as double;
+          final pymeT = await _buscarPorcentajeEnTramos(conn, reglaId, uf);
+          if (pymeT != null) {
+            bonoCalculado = (uf * pymeT) * VALOR_UF;
+            desgloseBono = 'UF ${f.format(uf)} x ${pymeT * 100}% x UF del Día = ${fPesos.format(bonoCalculado)}';
+          }
           break;
         case CLAVE_PYME_M:
-          bonoCalculado = await _calcularPyme(conn, reglaId, metricas['uf_pyme_m'] as double, VALOR_UF);
+          final uf = metricas['uf_pyme_m'] as double;
+          final pymeM = await _buscarPorcentajeEnTramos(conn, reglaId, uf);
+          if (pymeM != null) {
+            bonoCalculado = (uf * pymeM) * VALOR_UF;
+            desgloseBono = 'UF ${f.format(uf)} x ${pymeM * 100}% x UF del Día = ${fPesos.format(bonoCalculado)}';
+          }
           break;
 
-        // --- ¡LÓGICA DE RANKING MODIFICADA! ---
         case CLAVE_RANKING_SEGUROS:
         case CLAVE_RANKING_PYME:
         case CLAVE_RANKING_ISAPRE:
-          // Buscamos si el mapa 'sim_rankings' tiene una entrada para esta clave (ej: 'RANK_SEG')
           final posSimulada = (simRankings[clave] as int?)?.toDouble() ?? 0.0;
           if (posSimulada > 0) {
-            // Si la tiene (ej: 3), buscamos el monto para esa posición
-            bonoCalculado = await _buscarMontoFijoEnTramos(conn, reglaId, posSimulada);
+            final monto = await _buscarMontoFijoEnTramos(conn, reglaId, posSimulada);
+            if (monto != null) {
+               bonoCalculado = monto;
+               desgloseBono = fPesos.format(bonoCalculado);
+            }
           }
-          break;
-        // --- FIN DE LA MODIFICACIÓN ---
+          break; 
 
         default:
-          desglose.add('Regla "$nombreComponente" (clave: $clave) no implementada');
+          desgloseBono = 'Regla "$nombreComponente" (clave: $clave) no implementada';
       }
 
       final double? topeRegla = double.tryParse(regla['tope_monto'] ?? '');
       if (topeRegla != null && bonoCalculado > topeRegla) {
-        desglose.add('Bono "$nombreComponente" aplicado con TOPE de \$${topeRegla.toStringAsFixed(0)} (Original: \$${bonoCalculado.toStringAsFixed(0)})');
+        desglose.add('Bono "$nombreComponente" con TOPE: ${fPesos.format(topeRegla)} (Original: ${fPesos.format(bonoCalculado)})');
         bonoCalculado = topeRegla;
       }
       
       if (bonoCalculado > 0) {
-        desglose.add('Bono "$nombreComponente": \$${bonoCalculado.toStringAsFixed(0)}');
+        desglose.add('Bono "$nombreComponente": $desgloseBono');
         totalBonos += bonoCalculado;
+      } else if (desgloseBono.isEmpty) { 
+        if (!clave.startsWith('RANK_')) {
+          final minTramoStr = await _buscarTramoMinimo(conn, reglaId);
+          if (minTramoStr != null) {
+            desglose.add('Bono "$nombreComponente" NO OBTENIDO: No se alcanza el tramo mínimo (Mín: $minTramoStr)');
+          } else {
+            // --- ¡AQUÍ ESTÁ LA CORRECCIÓN! ---
+            // Añadimos '\' antes de '$0'
+            desglose.add('Bono "$nombreComponente" NO OBTENIDO: \$0 (Sin tramos definidos)');
+          }
+        }
+      } else if (desgloseBono.isNotEmpty && !clave.startsWith('RANK_')) {
+         desglose.add(desgloseBono);
       }
-    }
+      
+    } // Fin del For Loop de reglas
 
-    // --- 4. RESULTADO FINAL ---
+    // --- 4. RESULTADO FINAL (sin cambios) ---
     final double rentaFinal = SUELDO_BASE + totalBonos;
 
     return Response.json(body: {
@@ -220,7 +264,7 @@ Future<Response> onRequest(RequestContext context) async {
   }
 }
 
-// --- HELPER: Obtener Sueldo Base y Valor UF ---
+// --- (Helper _getValoresGlobales sin cambios) ---
 Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
   
   final fSueldo = conn.execute("SELECT valor FROM Configuracion WHERE llave = 'SUELDO_BASE'");
@@ -264,8 +308,7 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
   };
 }
 
-
-// --- HELPER: Chequeo de Requisitos (Modificado) ---
+// --- (Helper _checkRequisitos sin cambios) ---
 String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metricas, String claveLogica) {
   
   double? safeParseDouble(String? val) => (val == null || val.isEmpty) ? null : double.tryParse(val);
@@ -302,11 +345,23 @@ String? _checkRequisitos(Map<String, String?> regla, Map<String, dynamic> metric
   return null; // ¡Pasa todos los requisitos!
 }
 
+// --- (Helper _buscarTramoMinimo sin cambios) ---
+Future<String?> _buscarTramoMinimo(MySQLConnection conn, int reglaId) async {
+  final minRes = await conn.execute(
+    'SELECT MIN(tramo_desde_uf) as min_tramo FROM Reglas_Tramos WHERE regla_id = :reglaId',
+    {'reglaId': reglaId},
+  );
 
-// --- HELPER: Busca un MONTO FIJO en la tabla de tramos ---
-Future<double> _buscarMontoFijoEnTramos(MySQLConnection conn, int reglaId, double valor) async {
-  
-  if (valor <= 0) return 0.0; 
+  if (minRes.rows.isNotEmpty) {
+    return minRes.rows.first.assoc()['min_tramo'];
+  }
+  return null;
+}
+
+
+// --- (Helper _buscarMontoFijoEnTramos sin cambios) ---
+Future<double?> _buscarMontoFijoEnTramos(MySQLConnection conn, int reglaId, double valor) async {
+  if (valor <= 0) return null; 
 
   final tramoRes = await conn.execute(
     '''
@@ -321,13 +376,33 @@ Future<double> _buscarMontoFijoEnTramos(MySQLConnection conn, int reglaId, doubl
     final tramoData = tramoRes.rows.first.assoc();
     return double.parse(tramoData['monto_pago']!);
   }
-  return 0.0;
+  return null;
 }
 
-// --- HELPER: Busca un PORCENTAJE en tramos y lo convierte a pesos ---
-Future<double> _calcularPyme(MySQLConnection conn, int reglaId, double uf, double valorUf) async {
-  
-  if (uf <= 0) return 0.0;
+// --- (Helper _buscarMontoVariableEnTramos sin cambios) ---
+Future<double?> _buscarMontoVariableEnTramos(MySQLConnection conn, int reglaId, double valor) async {
+  if (valor <= 0) return null;
+
+  final tramoRes = await conn.execute(
+    '''
+    SELECT monto_pago FROM Reglas_Tramos
+    WHERE regla_id = :reglaId AND :valor BETWEEN tramo_desde_uf AND tramo_hasta_uf
+    LIMIT 1
+    ''',
+    {'reglaId': reglaId, 'valor': valor},
+  );
+
+  if (tramoRes.rows.isNotEmpty) {
+    final tramoData = tramoRes.rows.first.assoc();
+    return double.parse(tramoData['monto_pago']!);
+  }
+  return null;
+}
+
+
+// --- (Helper _buscarPorcentajeEnTramos sin cambios) ---
+Future<double?> _buscarPorcentajeEnTramos(MySQLConnection conn, int reglaId, double uf) async {
+  if (uf <= 0) return null;
 
   final tramoRes = await conn.execute(
     '''
@@ -340,9 +415,7 @@ Future<double> _calcularPyme(MySQLConnection conn, int reglaId, double uf, doubl
 
   if (tramoRes.rows.isNotEmpty) {
     final tramoData = tramoRes.rows.first.assoc();
-    final double porcentaje = double.parse(tramoData['monto_pago']!);
-    final double bonoEnPesos = (uf * porcentaje) * valorUf;
-    return bonoEnPesos;
+    return double.parse(tramoData['monto_pago']!);
   }
-  return 0.0;
+  return null;
 }
