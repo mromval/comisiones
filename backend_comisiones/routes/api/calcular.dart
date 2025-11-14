@@ -61,8 +61,8 @@ Future<Response> onRequest(RequestContext context) async {
     );
     await conn.connect();
 
+    // Leemos el valor de la UF, pero ya no necesitamos el Sueldo Base aquí
     final valoresGlobales = await _getValoresGlobales(conn);
-    final double SUELDO_BASE = valoresGlobales['sueldo_base']!;
     final double VALOR_UF = valoresGlobales['valor_uf']!;
     
     // --- (Lógica de perfil y métricas sin cambios) ---
@@ -144,18 +144,21 @@ Future<Response> onRequest(RequestContext context) async {
       }
 
       double bonoCalculado = 0;
-      String desgloseBono = ''; // Para el desglose detallado
+      String desgloseBono = '';
+      double valorInput = 0.0; // Para la lógica de "no mostrar desglose si es 0"
       
       switch (clave) {
         case CLAVE_TRAMO_P1:
-          final monto = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p1'] as double);
+          valorInput = metricas['uf_p1'] as double;
+          final monto = await _buscarMontoFijoEnTramos(conn, reglaId, valorInput);
           if (monto != null) {
             bonoCalculado = monto;
             desgloseBono = fPesos.format(bonoCalculado);
           }
           break; 
         case CLAVE_TRAMO_P2:
-          final monto = await _buscarMontoFijoEnTramos(conn, reglaId, metricas['uf_p2'] as double);
+          valorInput = metricas['uf_p2'] as double;
+          final monto = await _buscarMontoFijoEnTramos(conn, reglaId, valorInput);
           if (monto != null) {
             bonoCalculado = monto;
             desgloseBono = fPesos.format(bonoCalculado);
@@ -163,36 +166,36 @@ Future<Response> onRequest(RequestContext context) async {
           break;
           
         case CLAVE_REF_P1:
-          final numContratos = (metricas['ref_p1'] as int).toDouble();
-          final montoUnitario = await _buscarMontoVariableEnTramos(conn, reglaId, numContratos);
+          valorInput = (metricas['ref_p1'] as int).toDouble();
+          final montoUnitario = await _buscarMontoVariableEnTramos(conn, reglaId, valorInput);
           if (montoUnitario != null) {
-            bonoCalculado = numContratos * montoUnitario; // La multiplicación se hace aquí
-            desgloseBono = '$numContratos contratos x ${fPesos.format(montoUnitario)} c/u = ${fPesos.format(bonoCalculado)}';
+            bonoCalculado = valorInput * montoUnitario;
+            desgloseBono = '$valorInput contratos x ${fPesos.format(montoUnitario)} c/u = ${fPesos.format(bonoCalculado)}';
           }
           break;
         case CLAVE_REF_P2:
-          final numContratos = (metricas['ref_p2'] as int).toDouble();
-          final montoUnitario = await _buscarMontoVariableEnTramos(conn, reglaId, numContratos);
+          valorInput = (metricas['ref_p2'] as int).toDouble();
+          final montoUnitario = await _buscarMontoVariableEnTramos(conn, reglaId, valorInput);
           if (montoUnitario != null) {
-            bonoCalculado = numContratos * montoUnitario;
-            desgloseBono = '$numContratos contratos x ${fPesos.format(montoUnitario)} c/u = ${fPesos.format(bonoCalculado)}';
+            bonoCalculado = valorInput * montoUnitario;
+            desgloseBono = '$valorInput contratos x ${fPesos.format(montoUnitario)} c/u = ${fPesos.format(bonoCalculado)}';
           }
           break;
         
         case CLAVE_PYME_T:
-          final uf = metricas['uf_pyme_t'] as double;
-          final pymeT = await _buscarPorcentajeEnTramos(conn, reglaId, uf);
+          valorInput = metricas['uf_pyme_t'] as double;
+          final pymeT = await _buscarPorcentajeEnTramos(conn, reglaId, valorInput);
           if (pymeT != null) {
-            bonoCalculado = (uf * pymeT) * VALOR_UF;
-            desgloseBono = 'UF ${f.format(uf)} x ${pymeT * 100}% x UF del Día = ${fPesos.format(bonoCalculado)}';
+            bonoCalculado = (valorInput * pymeT) * VALOR_UF;
+            desgloseBono = 'UF ${f.format(valorInput)} x ${pymeT * 100}% x UF del Día = ${fPesos.format(bonoCalculado)}';
           }
           break;
         case CLAVE_PYME_M:
-          final uf = metricas['uf_pyme_m'] as double;
-          final pymeM = await _buscarPorcentajeEnTramos(conn, reglaId, uf);
+          valorInput = metricas['uf_pyme_m'] as double;
+          final pymeM = await _buscarPorcentajeEnTramos(conn, reglaId, valorInput);
           if (pymeM != null) {
-            bonoCalculado = (uf * pymeM) * VALOR_UF;
-            desgloseBono = 'UF ${f.format(uf)} x ${pymeM * 100}% x UF del Día = ${fPesos.format(bonoCalculado)}';
+            bonoCalculado = (valorInput * pymeM) * VALOR_UF;
+            desgloseBono = 'UF ${f.format(valorInput)} x ${pymeM * 100}% x UF del Día = ${fPesos.format(bonoCalculado)}';
           }
           break;
 
@@ -200,6 +203,7 @@ Future<Response> onRequest(RequestContext context) async {
         case CLAVE_RANKING_PYME:
         case CLAVE_RANKING_ISAPRE:
           final posSimulada = (simRankings[clave] as int?)?.toDouble() ?? 0.0;
+          valorInput = posSimulada; // El "valor" es la posición seleccionada
           if (posSimulada > 0) {
             final monto = await _buscarMontoFijoEnTramos(conn, reglaId, posSimulada);
             if (monto != null) {
@@ -223,13 +227,14 @@ Future<Response> onRequest(RequestContext context) async {
         desglose.add('Bono "$nombreComponente": $desgloseBono');
         totalBonos += bonoCalculado;
       } else if (desgloseBono.isEmpty) { 
-        if (!clave.startsWith('RANK_')) {
+        
+        // --- ¡MODIFICACIÓN! (Req. 7) ---
+        // Solo mostrar "NO OBTENIDO" si el usuario ingresó un valor > 0
+        if (valorInput > 0) {
           final minTramoStr = await _buscarTramoMinimo(conn, reglaId);
           if (minTramoStr != null) {
             desglose.add('Bono "$nombreComponente" NO OBTENIDO: No se alcanza el tramo mínimo (Mín: $minTramoStr)');
           } else {
-            // --- ¡AQUÍ ESTÁ LA CORRECCIÓN! ---
-            // Añadimos '\' antes de '$0'
             desglose.add('Bono "$nombreComponente" NO OBTENIDO: \$0 (Sin tramos definidos)');
           }
         }
@@ -239,12 +244,13 @@ Future<Response> onRequest(RequestContext context) async {
       
     } // Fin del For Loop de reglas
 
-    // --- 4. RESULTADO FINAL (sin cambios) ---
-    final double rentaFinal = SUELDO_BASE + totalBonos;
+    // --- ¡MODIFICACIÓN! (Req. 1) ---
+    // Renta Final ahora es SOLO el total de bonos
+    final double rentaFinal = totalBonos;
 
     return Response.json(body: {
       'renta_final': rentaFinal.round(),
-      'sueldo_base': SUELDO_BASE.round(),
+      // 'sueldo_base' se elimina de la respuesta principal
       'total_bonos': totalBonos.round(),
       'valor_uf_usado': VALOR_UF.round(), 
       'desglose': desglose,
@@ -264,26 +270,19 @@ Future<Response> onRequest(RequestContext context) async {
   }
 }
 
-// --- (Helper _getValoresGlobales sin cambios) ---
+// --- ¡HELPER MODIFICADO! (Req. 1) ---
+// Ya no necesitamos traer el Sueldo Base
 Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
   
-  final fSueldo = conn.execute("SELECT valor FROM Configuracion WHERE llave = 'SUELDO_BASE'");
   final fUfFallback = conn.execute("SELECT valor FROM Configuracion WHERE llave = 'FALLBACK_VALOR_UF'");
   final fUfApi = http.get(Uri.parse('https://mindicador.cl/api/uf'));
 
-  final results = await Future.wait([fSueldo, fUfFallback, fUfApi.catchError((_) => http.Response('', 404))]);
-
-  double sueldoBase = 529000; 
-  try {
-    final sueldoRes = results[0] as IResultSet;
-    if (sueldoRes.rows.isNotEmpty) {
-      sueldoBase = double.parse(sueldoRes.rows.first.assoc()['valor']!);
-    }
-  } catch (e) { print('Error al leer SUELDO_BASE de la BD: $e'); }
+  // Solo esperamos por la UF
+  final results = await Future.wait([fUfFallback, fUfApi.catchError((_) => http.Response('', 404))]);
 
   double ufFallback = 40000; 
   try {
-    final ufFallbackRes = results[1] as IResultSet;
+    final ufFallbackRes = results[0] as IResultSet;
     if (ufFallbackRes.rows.isNotEmpty) {
       ufFallback = double.parse(ufFallbackRes.rows.first.assoc()['valor']!);
     }
@@ -291,7 +290,7 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
   
   double valorUf = ufFallback;
   try {
-    final ufRes = results[2] as http.Response;
+    final ufRes = results[1] as http.Response;
     if (ufRes.statusCode == 200) {
       final data = jsonDecode(ufRes.body);
       valorUf = (data['serie'][0]['valor'] as num).toDouble();
@@ -303,8 +302,8 @@ Future<Map<String, double>> _getValoresGlobales(MySQLConnection conn) async {
   }
 
   return {
-    'sueldo_base': sueldoBase,
     'valor_uf': valorUf,
+    // 'sueldo_base' ya no es necesario
   };
 }
 

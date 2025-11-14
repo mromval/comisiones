@@ -1,6 +1,6 @@
 {
-    "name": "frontend_comisiones_v2",
-    "short_name": "frontend_comisiones_v2",
+    "name": "Calculadora de Comisiones Bupa",
+    "short_name": "Comisiones Bupa",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

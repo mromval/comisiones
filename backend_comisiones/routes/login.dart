@@ -40,13 +40,22 @@ Future<Response> onRequest(RequestContext context) async {
     );
     await conn.connect();
 
+    // --- ¡MODIFICACIÓN! ---
+    // 1. Hacemos JOIN con Perfiles para obtener p.nombre_perfil
     final resultado = await conn.execute(
-      'SELECT id, nombre_completo, email, password_hash, rol, perfil_id, equipo_id FROM Usuarios WHERE email = :email AND esta_activo = 1',
+      '''
+      SELECT 
+        u.id, u.nombre_completo, u.email, u.password_hash, u.rol,
+        p.nombre_perfil
+      FROM Usuarios u
+      LEFT JOIN Perfiles p ON u.perfil_id = p.id
+      WHERE u.email = :email AND u.esta_activo = 1
+      ''',
       {'email': email},
     );
+    // --- FIN DE MODIFICACIÓN ---
 
     if (resultado.rows.isEmpty) {
-      // --- ¡ARREGLO AQUÍ! ---
       return Response.json(
         statusCode: HttpStatus.unauthorized,
         body: {'message': 'Email o contraseña incorrectos (o usuario inactivo)'},
@@ -59,7 +68,6 @@ Future<Response> onRequest(RequestContext context) async {
     final esValida = BCrypt.checkpw(password, passwordHash);
 
     if (!esValida) {
-      // --- ¡ARREGLO AQUÍ! ---
       return Response.json(
         statusCode: HttpStatus.unauthorized,
         body: {'message': 'Email o contraseña incorrectos'},
@@ -76,6 +84,8 @@ Future<Response> onRequest(RequestContext context) async {
     final jwt = JWT(payload);
     final token = jwt.sign(SecretKey(jwtSecret), expiresIn: Duration(hours: 8));
 
+    // --- ¡MODIFICACIÓN! ---
+    // 2. Añadimos 'nombre_perfil' a la respuesta del usuario
     return Response.json(body: {
       'token': token,
       'usuario': {
@@ -83,6 +93,7 @@ Future<Response> onRequest(RequestContext context) async {
         'nombre_completo': usuario['nombre_completo'],
         'email': usuario['email'],
         'rol': usuario['rol'],
+        'nombre_perfil': usuario['nombre_perfil'], // <-- CAMPO AÑADIDO
       }
     });
 

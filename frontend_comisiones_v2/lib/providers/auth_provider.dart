@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 // --- Constantes ---
+// ¡Recuerda cambiar esto por 'https://api.tudominio.com' para producción!
 const String _apiUrl = 'http://localhost:8080';
 
 // --- 0. Modelo de Usuario ---
@@ -14,12 +15,14 @@ class Usuario {
   final String nombreCompleto;
   final String email;
   final String rol;
+  final String? nombrePerfil; // <-- CAMPO AÑADIDO
 
   Usuario({
     required this.id,
     required this.nombreCompleto,
     required this.email,
     required this.rol,
+    this.nombrePerfil, // <-- CAMPO AÑADIDO
   });
 
   Map<String, dynamic> toJson() => {
@@ -27,6 +30,7 @@ class Usuario {
     'nombre_completo': nombreCompleto,
     'email': email,
     'rol': rol,
+    'nombre_perfil': nombrePerfil, // <-- CAMPO AÑADIDO
   };
 
   factory Usuario.fromJson(Map<String, dynamic> json) => Usuario(
@@ -34,6 +38,7 @@ class Usuario {
     nombreCompleto: json['nombre_completo'] as String,
     email: json['email'] as String,
     rol: json['rol'] as String,
+    nombrePerfil: json['nombre_perfil'] as String?, // <-- CAMPO AÑADIDO
   );
 }
 
@@ -60,8 +65,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _tryAutoLogin() async {
-    // --- ¡INICIO DE LA CORRECCIÓN! ---
-    // Envolvemos todo en un try/catch por si SharedPreferences falla
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('authToken');
@@ -70,15 +73,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (token == null || usuarioJson == null) {
         state = Unauthenticated();
       } else {
+        // (Esto funciona automáticamente con el nuevo campo)
         final usuario = Usuario.fromJson(jsonDecode(usuarioJson));
         state = Authenticated(token: token, usuario: usuario);
       }
     } catch (e) {
-      // Si algo falla al cargar, simplemente lo mandamos al Login
       print('Error en _tryAutoLogin: $e');
       state = Unauthenticated();
     }
-    // --- FIN DE LA CORRECCIÓN ---
   }
 
   Future<void> login(String email, String password) async {
@@ -94,10 +96,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
         final token = body['token'] as String;
+        // (Esto funciona automáticamente con el nuevo campo)
         final usuario = Usuario.fromJson(body['usuario'] as Map<String, dynamic>);
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('authToken', token);
+        // (Esto funciona automáticamente con el nuevo campo)
         await prefs.setString('authUser', jsonEncode(usuario.toJson()));
 
         state = Authenticated(token: token, usuario: usuario);
