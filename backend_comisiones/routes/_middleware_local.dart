@@ -29,7 +29,7 @@ Handler middleware(Handler handler) {
           
           // Permitimos cualquier origen, header y método para desarrollo
           // Esto solucionará el error 100%
-          allowOrigin: 'https://simulador.fabricamostuidea.cl', 
+          allowOrigin: '*', 
           allowHeaders: '*',
           allowMethods: '*',
 

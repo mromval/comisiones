@@ -104,7 +104,12 @@ Future<Response> onRequest(RequestContext context) async {
     double totalBonos = 0;
     final List<String> desglose = [];
     final f = NumberFormat.decimalPattern('es_CL');
-    final fPesos = NumberFormat.currency(locale: 'es_CL', symbol: '\$', decimalDigits: 0);
+    
+    // --- INICIO REQUERIMIENTO 2 ---
+    // Forzamos el formato de moneda Chileno ('$' al principio)
+    // en lugar de depender del 'locale' del servidor.
+    final fPesos = NumberFormat('\$#,##0', 'es_CL');
+    // --- FIN REQUERIMIENTO 2 ---
 
     final reglasActivas = await conn.execute(
       '''
