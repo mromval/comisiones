@@ -1,0 +1,15 @@
+# Excluir el middleware de desarrollo
+routes/_middleware_local.dart
+
+# Excluir el archivo .env (se maneja en CasaOS)
+.env
+
+# Excluir archivos de Git y VSCode
+.git
+.vscode
+
+# Excluir dependencias y builds locales
+build
+.dart_tool
+.packages
+# pubspec.lock  <-- ¡ESTA LÍNEA DEBE ESTAR BORRADA O COMENTADA!

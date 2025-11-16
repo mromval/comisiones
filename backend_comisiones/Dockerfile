@@ -23,21 +23,20 @@ FROM dart:stable
 
 WORKDIR /app
 
-# --- INICIO DE LA CORRECCIÓN ---
-# 1. Copiamos la build de producción (el servidor)
-COPY --from=build /app/build .
-
-# 2. Copiamos las dependencias ya resueltas de la etapa 'build'
-COPY --from=build /app/.dart_tool .dart_tool
-
-# 3. Copiamos los pubspec para que todo sea consistente
+# 1. Copia los archivos pubspec PRIMERO
 COPY --from=build /app/pubspec.lock /app/pubspec.yaml ./
-# --- FIN DE LA CORRECCIÓN ---
 
-# 4. Ya no necesitamos 'dart pub get' porque copiamos .dart_tool
+# 2. Ejecuta 'dart pub get' OTRA VEZ en la imagen final
+# Esto es crucial y es lo que faltaba.
+# Usará el .lock para instalar las dependencias exactas.
+RUN dart pub get
+
+# 3. Ahora copia la build (el código del servidor)
+COPY --from=build /app/build .
 
 # El puerto que tu backend usa
 EXPOSE 8086
 
 # El comando para iniciar el servidor de producción
+# (Este comando es el que fallaba antes)
 CMD ["dart", "run", "bin/server.dart"]
