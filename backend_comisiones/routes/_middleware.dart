@@ -1,5 +1,5 @@
 import 'package:dart_frog/dart_frog.dart';
-import 'package:dart_frog_cors/dart_frog_cors.dart'; // <-- El import
+import 'package:dart_frog_cors/dart_frog_cors.dart'; 
 import 'package:dotenv/dotenv.dart';
 
 // El mapa para guardar la configuración
@@ -22,18 +22,19 @@ Handler middleware(Handler handler) {
     }
   }
 
-  // 2. Provee la config Y APLICA EL CORS (LA FORMA CORRECTA)
+  // 2. Provee la config Y APLICA EL CORS
+  // Esta es la configuración explícita que soluciona el error 'preflight'
   return handler
       .use(provider<Map<String, String>>((_) => _config!)) // Provee la config
-      .use(cors( // <-- ¡ESTE ES EL COMANDO CORRECTO!
+      .use(cors( 
           
-          // Permitimos cualquier origen, header y método para desarrollo
-          // Esto solucionará el error 100%
+          // El dominio que SÍ tiene permiso
           allowOrigin: 'https://simulador.fabricamostuidea.cl', 
-          allowHeaders: '*',
-          allowMethods: '*',
-
-          // NOTA: Para producción, seríamos más estrictos, ej:
-          // allowOrigin: 'http://tu-dominio-frontend.com',
+          
+          // Le decimos explícitamente qué cabeceras aceptar
+          allowHeaders: 'Origin, Content-Type, X-Auth-Token, Authorization',
+          
+          // Le decimos explícitamente qué métodos aceptar (incluyendo OPTIONS para preflight)
+          allowMethods: 'GET, POST, PUT, DELETE, OPTIONS', 
         ));
 }

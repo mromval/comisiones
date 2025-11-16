@@ -7,7 +7,7 @@ import 'package:frontend_comisiones_v2/models/admin_data_models.dart';
 import 'package:frontend_comisiones_v2/providers/auth_provider.dart';
 
 // --- Constantes ---
-const String _apiUrl = 'https://api.comisiones.fabricamostuidea.cl'; // O tu puerto
+const String _apiUrl = 'https://apibupa.fabricamostuidea.cl'; // O tu puerto
 
 // --- API Client Interno ---
 class AdminApiClient {

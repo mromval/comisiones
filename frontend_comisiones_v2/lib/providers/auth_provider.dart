@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 // --- Constantes ---
 // ¡Recuerda cambiar esto por 'https://api.tudominio.com' para producción!
-const String _apiUrl = 'https://api.comisiones.fabricamostuidea.cl';
+const String _apiUrl = 'https://apibupa.fabricamostuidea.cl';
 
 // --- 0. Modelo de Usuario ---
 class Usuario {

@@ -111,7 +111,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://api.comisiones.fabricamostuidea.cl/api/calcular'), 
+        Uri.parse('https://apibupa.fabricamostuidea.cl/api/calcular'), 
         headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
         body: body, 
       );
