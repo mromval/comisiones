@@ -15,6 +15,7 @@ dependencies:
   http: ^1.5.0
   mysql_client: ^0.0.27
   intl: ^0.19.0
+  csv: ^5.1.1
   
 dev_dependencies:
   dart_frog_lint: ^0.1.0

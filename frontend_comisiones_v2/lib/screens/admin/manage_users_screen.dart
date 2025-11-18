@@ -6,13 +6,14 @@ import 'package:frontend_comisiones_v2/models/admin_data_models.dart';
 import 'package:frontend_comisiones_v2/providers/admin_provider.dart';
 import 'package:frontend_comisiones_v2/screens/admin/create_user_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/edit_user_screen.dart';
+// --- ¡NUEVO IMPORT! ---
+import 'package:frontend_comisiones_v2/screens/admin/import_users_screen.dart';
 
 class ManageUsersScreen extends ConsumerWidget {
   const ManageUsersScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // ¡MODIFICACIÓN! Ahora observamos el Notifier
     final asyncUsers = ref.watch(userListProvider);
 
     return Scaffold(
@@ -20,10 +21,28 @@ class ManageUsersScreen extends ConsumerWidget {
         title: const Text('Gestionar Ejecutivos'),
         backgroundColor: Colors.indigo.shade700,
         foregroundColor: Colors.white,
+        // --- ¡INICIO DE LA MODIFICACIÓN! ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file), // Icono de "Importar"
+            tooltip: 'Importar Usuarios (Masivo)',
+            onPressed: () {
+              // Navegamos a la nueva pantalla de importación
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ImportUsersScreen(),
+                ),
+              ).then((_) {
+                // Al volver de la importación, refrescamos la lista
+                ref.invalidate(userListProvider);
+              });
+            },
+          ),
+        ],
+        // --- FIN DE LA MODIFICACIÓN! ---
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          // ¡MODIFICACIÓN! Ahora invalidamos el Notifier
           return ref.refresh(userListProvider.notifier);
         },
         child: Container(
@@ -130,12 +149,9 @@ class UserListCard extends ConsumerWidget {
           ],
         ),
         
-        // --- ¡INICIO DE LA MODIFICACIÓN! ---
-        // Reemplazamos el Chip con un PopupMenuButton
         trailing: PopupMenuButton<String>(
           onSelected: (value) {
             if (value == 'edit') {
-              // Misma lógica de "onTap"
               ref.invalidate(teamListProvider);
               ref.invalidate(profileListProvider);
               Navigator.of(context).push(
@@ -143,12 +159,10 @@ class UserListCard extends ConsumerWidget {
                   builder: (context) => EditUserScreen(user: user),
                 ),
               ).then((_) {
-                // Cuando volvemos de editar, refrescamos
                 ref.invalidate(userListProvider);
               });
 
             } else if (value == 'delete') {
-              // Lógica de inactivar
               _showDeactivateConfirmation(context, ref, user);
             }
           },
@@ -168,7 +182,6 @@ class UserListCard extends ConsumerWidget {
               ),
             ),
           ],
-          // Mostramos el ROL como el ícono del menú
           icon: Chip(
             label: Text(
               user.rol.toUpperCase(),
@@ -184,15 +197,13 @@ class UserListCard extends ConsumerWidget {
             side: BorderSide.none,
           ),
         ),
-        // Ya no necesitamos el onTap en el ListTile
         onTap: null, 
-        // --- FIN DE LA MODIFICACIÓN! ---
       ),
     );
   }
 }
 
-// --- ¡NUEVO DIÁLOGO DE CONFIRMACIÓN! ---
+// --- Diálogo de Confirmación de Borrado ---
 void _showDeactivateConfirmation(BuildContext context, WidgetRef ref, AdminUser user) {
   showDialog(
     context: context,
@@ -209,7 +220,6 @@ void _showDeactivateConfirmation(BuildContext context, WidgetRef ref, AdminUser 
           child: const Text('Sí, Inactivar'),
           onPressed: () async {
             try {
-              // ¡Llamamos al nuevo notifier!
               await ref.read(userListProvider.notifier).removeUser(user.id);
               if(context.mounted) Navigator.of(context).pop();
             } catch (e) {

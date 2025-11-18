@@ -1,5 +1,6 @@
 # Excluir el middleware de desarrollo
 routes/_middleware_local.dart
+routes/_middleware_online.dart
 
 # Excluir el archivo .env (se maneja en CasaOS)
 .env
