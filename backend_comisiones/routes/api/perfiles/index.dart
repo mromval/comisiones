@@ -1,4 +1,4 @@
-// routes/api/perfiles/index.dart
+// backend_comisiones/routes/api/perfiles/index.dart
 import 'dart:io';
 import 'dart:convert';
 import 'package:dart_frog/dart_frog.dart';
@@ -8,23 +8,29 @@ Future<Response> onRequest(RequestContext context) async {
   
   final jwtPayload = context.read<Map<String, dynamic>>();
   final rol = jwtPayload['rol'] as String;
-  // ¡Importante! Solo un 'admin' puede gestionar perfiles
-  if (rol != 'admin') {
-    return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
-  }
 
+  // --- MODIFICACIÓN: Lógica de permisos separada por método ---
   switch (context.request.method) {
     case HttpMethod.get:
+      // Permitir GET a admin y supervisor para llenar los dropdowns
+      if (rol != 'admin' && rol != 'supervisor') {
+         return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado.');
+      }
       return _onGet(context);
+      
     case HttpMethod.post:
+      // Solo Admin puede CREAR perfiles
+      if (rol != 'admin') {
+        return Response(statusCode: HttpStatus.forbidden, body: 'Acceso denegado: Solo administradores.');
+      }
       return _onPost(context);
+      
     default:
       return Response(statusCode: HttpStatus.methodNotAllowed);
   }
 }
 
 // --- FUNCIÓN GET (LISTAR TODOS LOS PERFILES) ---
-// (Esta es la que ya tenías, ordenada)
 Future<Response> _onGet(RequestContext context) async {
   final config = context.read<Map<String, String>>();
   MySQLConnection? conn;
@@ -53,7 +59,7 @@ Future<Response> _onGet(RequestContext context) async {
   }
 }
 
-// --- ¡NUEVA FUNCIÓN POST! (CREAR UN NUEVO PERFIL) ---
+// --- FUNCIÓN POST (CREAR UN NUEVO PERFIL) ---
 Future<Response> _onPost(RequestContext context) async {
   final config = context.read<Map<String, String>>();
   MySQLConnection? conn;

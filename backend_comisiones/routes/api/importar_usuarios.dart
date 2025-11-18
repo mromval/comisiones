@@ -1,4 +1,4 @@
-// backend_comisiones/routes/api/usuarios/importar.dart
+// backend_comisiones/routes/api/importar_usuarios.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:bcrypt/bcrypt.dart';
@@ -11,7 +11,6 @@ Future<Response> onRequest(RequestContext context) async {
   final jwtPayload = context.read<Map<String, dynamic>>();
   final rol = jwtPayload['rol'] as String;
   if (rol != 'admin') {
-    // CORRECCIÓN: Devolver JSON
     return Response.json(
       statusCode: HttpStatus.forbidden,
       body: {'message': 'Acceso denegado: Solo administradores.'},
@@ -42,7 +41,6 @@ Future<Response> onRequest(RequestContext context) async {
 
     final csvData = await context.request.body();
     if (csvData.isEmpty) {
-      // CORRECCIÓN: Devolver JSON
       return Response.json(
         statusCode: HttpStatus.badRequest, 
         body: {'message': 'El archivo enviado está vacío.'}
@@ -52,19 +50,16 @@ Future<Response> onRequest(RequestContext context) async {
     var usuariosCreados = 0;
     final List<String> erroresDetalle = [];
 
-    // Usamos coma ',' como delimitador
     final List<List<dynamic>> csvRows =
-        const CsvToListConverter(fieldDelimiter: ',').convert(csvData);
+        const CsvToListConverter(fieldDelimiter: ';').convert(csvData);
 
     if (csvRows.length <= 1) {
-      // CORRECCIÓN: Devolver JSON
       return Response.json(
         statusCode: HttpStatus.badRequest,
         body: {'message': 'El archivo CSV no tiene filas de datos.'}
       );
     }
 
-    // (El resto del bucle FOR se mantiene igual, la lógica es correcta)
     for (var i = 1; i < csvRows.length; i++) {
       final row = csvRows[i];
       final numeroFila = i + 1;
@@ -144,7 +139,6 @@ Future<Response> onRequest(RequestContext context) async {
   } catch (e) {
     print('--- ¡ERROR EN IMPORTACIÓN! ---');
     print(e.toString());
-    // CORRECCIÓN: Devolver JSON con el error técnico
     return Response.json(
       statusCode: HttpStatus.internalServerError,
       body: {'message': 'Error interno: ${e.toString()}'}
@@ -154,7 +148,6 @@ Future<Response> onRequest(RequestContext context) async {
   }
 }
 
-// (Helpers _getProfileMap y _getTeamMap se mantienen igual)
 Future<Map<String, int>> _getProfileMap(MySQLConnection conn) async {
   final Map<String, int> map = {};
   final resultado = await conn.execute('SELECT id, nombre_perfil FROM Perfiles');

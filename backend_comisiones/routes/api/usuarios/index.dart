@@ -7,9 +7,11 @@ import 'package:bcrypt/bcrypt.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   
-  // 1. Verificamos el ROL (Middleware ya lo hizo)
+  // 1. Verificamos el ROL
   final jwtPayload = context.read<Map<String, dynamic>>();
-  final rol = jwtPayload['rol'] as String;
+  
+  // --- CORRECCIÓN CLAVE: Sanitizamos el rol (minúsculas y sin espacios) ---
+  final rol = (jwtPayload['rol'] as String).trim().toLowerCase(); 
 
   // ¡OJO! Un ejecutivo no puede hacer NADA en esta ruta
   if (rol == 'ejecutivo') {
@@ -22,8 +24,7 @@ Future<Response> onRequest(RequestContext context) async {
   // 2. Usamos un SWITCH para manejar GET y POST
   switch (context.request.method) {
     case HttpMethod.get:
-      // Pasamos el payload completo porque necesitaremos el ID del supervisor
-      return _onGet(context, jwtPayload); 
+      return _onGet(context, jwtPayload, rol); // Pasamos el rol limpio
     case HttpMethod.post:
       // Solo un admin puede crear usuarios
       if (rol != 'admin') {
@@ -35,13 +36,16 @@ Future<Response> onRequest(RequestContext context) async {
   }
 }
 
-// --- FUNCIÓN GET (MODIFICADA CON LÓGICA DE ROLES) ---
-Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload) async {
+// --- FUNCIÓN GET (MEJORADA) ---
+Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload, String rol) async {
   
   final config = context.read<Map<String, String>>();
-  final rol = jwtPayload['rol'] as String;
-  final miId = int.parse(jwtPayload['id'] as String); // El ID del usuario que hace la petición
+  final miId = int.parse(jwtPayload['id'] as String); 
   
+  print('--- DEBUG USUARIOS GET ---');
+  print('Usuario ID: $miId');
+  print('Rol Detectado: "$rol"'); // Veremos esto en la consola para confirmar
+
   MySQLConnection? conn;
 
   try {
@@ -53,13 +57,12 @@ Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload)
     await conn.connect();
 
     String query;
-    Map<String, dynamic> parameters;
+    Map<String, dynamic> parameters = {};
 
-    // --- ¡INICIO DE LA LÓGICA DE PERMISOS! ---
+    // --- LÓGICA DE PERMISOS ROBUSTA ---
     if (rol == 'admin') {
       
-      // 1. Si es ADMIN, trae a TODOS (la consulta que ya teníamos)
-      print('Permiso: ADMIN. Obteniendo todos los usuarios.');
+      print('-> Ejecutando consulta de ADMIN (Ver todo)');
       query = '''
         SELECT 
           u.id, u.email, u.nombre_completo, u.rol, u.esta_activo,
@@ -71,12 +74,13 @@ Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload)
         WHERE u.esta_activo = 1
         ORDER BY u.nombre_completo;
       ''';
-      parameters = {};
 
-    } else { // Si es 'supervisor'
-
-      // 2. Si es SUPERVISOR, busca solo los usuarios DE SU EQUIPO
-      print('Permiso: SUPERVISOR. Obteniendo solo su equipo.');
+    } else { 
+      // Si NO es admin (es decir, es supervisor)
+      print('-> Ejecutando consulta de SUPERVISOR (Ver solo equipo)');
+      
+      // Usamos una SUBCONSULTA: "Traeme usuarios cuyo equipo tenga como jefe a MI ID"
+      // Esto es más seguro que el JOIN anterior.
       query = '''
         SELECT 
           u.id, u.email, u.nombre_completo, u.rol, u.esta_activo,
@@ -85,15 +89,13 @@ Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload)
         FROM Usuarios u
         LEFT JOIN Perfiles p ON u.perfil_id = p.id
         LEFT JOIN Equipos e ON u.equipo_id = e.id
-        -- Hacemos un JOIN con Equipos OTRA VEZ para encontrar el equipo del supervisor
-        JOIN Equipos e_supervisor ON e_supervisor.supervisor_id = :miId
-        -- El WHERE filtra que el equipo del usuario sea el mismo que supervisa
-        WHERE u.equipo_id = e_supervisor.id AND u.esta_activo = 1
+        WHERE 
+          u.esta_activo = 1 
+          AND u.equipo_id IN (SELECT id FROM Equipos WHERE supervisor_id = :miId)
         ORDER BY u.nombre_completo;
       ''';
-      parameters = {'miId': miId};
+      parameters['miId'] = miId;
     }
-    // --- FIN DE LA LÓGICA DE PERMISOS ---
 
     final resultado = await conn.execute(query, parameters);
 
@@ -108,7 +110,6 @@ Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload)
   } catch (e) {
     print('--- ¡ERROR EN GET /api/usuarios! ---');
     print(e.toString());
-    print("----------------------------------");
     return Response(statusCode: HttpStatus.internalServerError, body: 'Error al consultar usuarios.');
   } finally {
     await conn?.close();
@@ -116,9 +117,8 @@ Future<Response> _onGet(RequestContext context, Map<String, dynamic> jwtPayload)
 }
 
 
-// --- FUNCIÓN POST (Sin cambios, pero con la restricción de admin arriba) ---
+// --- FUNCIÓN POST (Sin cambios) ---
 Future<Response> _onPost(RequestContext context) async {
-  // ... (El código de _onPost que ya teníamos es idéntico) ...
   final config = context.read<Map<String, String>>();
   MySQLConnection? conn;
   String? email;
@@ -137,7 +137,7 @@ Future<Response> _onPost(RequestContext context) async {
     if (email == null || password == null || nombre == null || rol == null) {
       return Response(
         statusCode: HttpStatus.badRequest,
-        body: 'Faltan campos obligatorios (email, password, nombre_completo, rol)',
+        body: 'Faltan campos obligatorios',
       );
     }
 
@@ -170,15 +170,12 @@ Future<Response> _onPost(RequestContext context) async {
   } catch (e) {
     print('--- ¡ERROR EN POST /api/usuarios! ---');
     print(e.toString());
-    
     if (e.toString().contains('email_unico')) {
        return Response(
-        statusCode: HttpStatus.conflict, // 409
+        statusCode: HttpStatus.conflict,
         body: 'El email $email ya existe.',
       );
     }
-    
-    print("---------------------------------");
     return Response(statusCode: HttpStatus.internalServerError, body: 'Error al crear el usuario.');
   } finally {
     await conn?.close();

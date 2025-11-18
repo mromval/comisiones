@@ -7,7 +7,6 @@ import 'package:frontend_comisiones_v2/screens/admin/manage_concursos_screen.dar
 import 'package:frontend_comisiones_v2/screens/admin/manage_equipos_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/manage_perfiles_screen.dart';
 import 'package:frontend_comisiones_v2/screens/admin/manage_users_screen.dart';
-// --- ¡NUEVO IMPORT! ---
 import 'package:frontend_comisiones_v2/screens/admin/manage_configuracion_screen.dart';
 
 class AdminDashboardScreen extends ConsumerWidget {
@@ -16,6 +15,9 @@ class AdminDashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final usuario = (ref.watch(authProvider) as Authenticated).usuario;
+    
+    // Helper para saber si es admin
+    final bool esAdmin = usuario.rol == 'admin';
 
     return Scaffold(
       appBar: AppBar(
@@ -52,7 +54,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 32),
                 
-                // Botón Gestionar Ejecutivos
+                // --- 1. Botón Gestionar Ejecutivos (Visible para ambos) ---
                 ElevatedButton.icon(
                   icon: const Icon(Icons.people),
                   label: const Text('Gestionar Ejecutivos'),
@@ -69,79 +71,77 @@ class AdminDashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 
-                // Botón Mantenedor de Equipos
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.group_work),
-                  label: const Text('Mantenedor de Equipos'),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ManageEquiposScreen(),
-                    ));
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo.shade600,
-                    padding: const EdgeInsets.all(20),
-                    textStyle: const TextStyle(fontSize: 18)
+                // --- 2. Botones SOLO ADMIN ---
+                if (esAdmin) ...[
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.group_work),
+                    label: const Text('Mantenedor de Equipos'),
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ManageEquiposScreen(),
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade600,
+                      padding: const EdgeInsets.all(20),
+                      textStyle: const TextStyle(fontSize: 18)
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // Botón Mantenedor de Perfiles
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.assignment_ind),
-                  label: const Text('Mantenedor de Perfiles'),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ManagePerfilesScreen(),
-                    ));
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo.shade600,
-                    padding: const EdgeInsets.all(20),
-                    textStyle: const TextStyle(fontSize: 18)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.assignment_ind),
+                    label: const Text('Mantenedor de Perfiles'),
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ManagePerfilesScreen(),
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade600,
+                      padding: const EdgeInsets.all(20),
+                      textStyle: const TextStyle(fontSize: 18)
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // Botón Mantenedor de Concursos
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.emoji_events),
-                  label: const Text('Mantenedor de Concursos'),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ManageConcursosScreen(),
-                    ));
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo.shade600,
-                    padding: const EdgeInsets.all(20),
-                    textStyle: const TextStyle(fontSize: 18)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.emoji_events),
+                    label: const Text('Mantenedor de Concursos'),
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ManageConcursosScreen(),
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade600,
+                      padding: const EdgeInsets.all(20),
+                      textStyle: const TextStyle(fontSize: 18)
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // --- ¡NUEVO BOTÓN! (Añadido aquí) ---
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.settings),
-                  label: const Text('Variables Globales'),
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ManageConfiguracionScreen(),
-                    ));
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo.shade600,
-                    padding: const EdgeInsets.all(20),
-                    textStyle: const TextStyle(fontSize: 18)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.settings),
+                    label: const Text('Variables Globales'),
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ManageConfiguracionScreen(),
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.indigo.shade600,
+                      padding: const EdgeInsets.all(20),
+                      textStyle: const TextStyle(fontSize: 18)
+                    ),
                   ),
-                ),
-                // --- FIN NUEVO BOTÓN ---
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
 
-                // Botón Ingresar Métricas
+                // --- 3. Botón Métricas (Visible para ambos, TEXTO CAMBIADO) ---
                 ElevatedButton.icon(
                   icon: const Icon(Icons.bar_chart),
-                  label: const Text('Ingresar Métricas Mensuales'),
+                  label: const Text('Ingresar Porcentaje de Recaudación'), // <-- CAMBIO DE GLOSA
                   onPressed: () {
                     Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const InputMetricsScreen(),

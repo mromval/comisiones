@@ -7,7 +7,7 @@ import 'package:frontend_comisiones_v2/models/admin_data_models.dart';
 import 'package:frontend_comisiones_v2/providers/auth_provider.dart';
 
 // --- Constantes ---
-const String _apiUrl = 'https://apibupa.fabricamostuidea.cl'; // O tu puerto de desarrollo
+const String _apiUrl = 'http://localhost:8080'; // O tu puerto de desarrollo
 
 // --- API Client Interno ---
 class AdminApiClient {
@@ -69,27 +69,27 @@ class AdminApiClient {
     }
   }
 
-  // --- ¡NUEVA FUNCIÓN DE IMPORTACIÓN! ---
+  // --- ¡FUNCIÓN DE IMPORTACIÓN ACTUALIZADA! ---
   Future<Map<String, dynamic>> importarUsuariosCSV(String csvData) async {
     final response = await http.post(
-      Uri.parse('$_apiUrl/api/usuarios/importar'),
+      // CAMBIO: Nueva ruta para evitar conflicto con [id]
+      Uri.parse('$_apiUrl/api/importar_usuarios'),
       headers: {
-        'Content-Type': 'text/csv; charset=utf-8', // Enviamos como texto CSV
+        'Content-Type': 'text/csv; charset=utf-8', 
         'Authorization': 'Bearer $_token',
       },
-      body: csvData, // Enviamos el string del CSV directamente en el body
+      body: csvData, 
     );
 
     final Map<String, dynamic> responseBody = jsonDecode(response.body);
 
     if (response.statusCode == 200) {
-      return responseBody; // Devuelve el resumen (ej: {creados: 50, errores: 2, ...})
+      return responseBody; 
     } else {
-      // Si el backend da un error 500 o 400, lo lanzamos
       throw Exception(responseBody['message'] ?? 'Error al procesar el archivo.');
     }
   }
-  // --- FIN DE LA NUEVA FUNCIÓN ---
+  // --- FIN ---
 
 
   // --- Equipos ---
@@ -405,6 +405,7 @@ final componentListProvider = FutureProvider<List<AdminComponent>>((ref) {
   return apiClient.getComponentes();
 });
 
+// --- ¡NUEVO PROVIDER! ---
 final currentMetricsProvider = FutureProvider<List<AdminMetrica>>((ref) {
   final apiClient = ref.watch(adminApiClientProvider);
   return apiClient.getMetrics();
@@ -412,6 +413,8 @@ final currentMetricsProvider = FutureProvider<List<AdminMetrica>>((ref) {
 
 // --- Providers de Notificadores (CRUD Completo) ---
 
+// --- ¡INICIO DE LA MODIFICACIÓN (userListProvider)! ---
+// 1. Convertimos userListProvider a un AsyncNotifierProvider
 final userListProvider = AsyncNotifierProvider<UserListNotifier, List<AdminUser>>(
   () => UserListNotifier(),
 );
@@ -424,18 +427,20 @@ class UserListNotifier extends AsyncNotifier<List<AdminUser>> {
     return apiClient.getUsuarios();
   }
 
+  // 2. Añadimos la función para inactivar
   Future<void> removeUser(int userId) async {
     final apiClient = ref.read(adminApiClientProvider);
     state = const AsyncLoading();
     try {
       await apiClient.deleteUser(userId);
-      ref.invalidateSelf(); 
+      ref.invalidateSelf(); // Recargar la lista
     } catch (e, s) {
       state = AsyncError(e, s);
       throw Exception('Error al inactivar usuario: $e');
     }
   }
 }
+// --- FIN DE LA MODIFICACIÓN ---
 
 
 final userUpdateProvider = StateNotifierProvider<UserUpdateNotifier, AsyncValue<void>>((ref) {
@@ -450,7 +455,7 @@ class UserUpdateNotifier extends StateNotifier<AsyncValue<void>> {
       final apiClient = _ref.read(adminApiClientProvider);
       await apiClient.updateUser(userId, data);
       state = const AsyncData(null);
-      _ref.invalidate(userListProvider); 
+      _ref.invalidate(userListProvider); // 3. Esto sigue funcionando
     } catch (e, s) {
       state = AsyncError(e, s);
     }
@@ -659,6 +664,7 @@ class ProfileListNotifier extends AsyncNotifier<List<AdminProfile>> {
   }
 }
 
+// --- ¡INICIO DE LA MODIFICACIÓN (ConfigListNotifier)! ---
 final configListProvider = AsyncNotifierProvider<ConfigListNotifier, List<AdminConfig>>(
   () => ConfigListNotifier(),
 );
@@ -670,11 +676,13 @@ class ConfigListNotifier extends AsyncNotifier<List<AdminConfig>> {
     return apiClient.getConfiguracion();
   }
 
-  Future<void> updateConfig(String llave, dynamic valor) async { 
+  // Modificado para aceptar 'dynamic' y convertir 'DateTime' a String
+  Future<void> updateConfig(String llave, dynamic valor) async { // <- Acepta dynamic
     final apiClient = ref.read(adminApiClientProvider);
     final previousState = state;
-    state = const AsyncLoading(); 
+    state = const AsyncLoading(); // Muestra cargando
     try {
+      // Si el valor es DateTime, lo formateamos a 'YYYY-MM-DD'
       String valorParaAPI;
       if (valor is DateTime) {
         valorParaAPI = '${valor.year}-${valor.month.toString().padLeft(2, '0')}-${valor.day.toString().padLeft(2, '0')}';
@@ -682,15 +690,16 @@ class ConfigListNotifier extends AsyncNotifier<List<AdminConfig>> {
         valorParaAPI = valor.toString();
       }
 
-      await apiClient.updateConfiguracion(llave, {'valor': valorParaAPI}); 
-      ref.invalidateSelf(); 
+      await apiClient.updateConfiguracion(llave, {'valor': valorParaAPI}); // <- Envía un mapa con 'valor'
+      ref.invalidateSelf(); // Vuelve a cargar la configuración desde la BD
     } catch (e, s) {
       state = AsyncError(e, s);
-      state = previousState; 
-      throw Exception('Error al actualizar configuración: $e'); 
+      state = previousState; // Revierte el estado en caso de error
+      throw Exception('Error al actualizar configuración: $e'); // Propaga el error
     }
   }
 }
+// --- FIN DE LA MODIFICACIÓN ---
 
 final metricSaveLoadingProvider = StateProvider<bool>((ref) => false);
 
